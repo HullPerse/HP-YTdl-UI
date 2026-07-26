@@ -1,0 +1,894 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YouTube Downloader</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <div class="header-brand"></div>
+        <button id="btn-settings-toggle" class="btn-icon" title="Settings">
+          &#9881;
+        </button>
+      </header>
+
+      <div class="tabs">
+        <button class="tab active" data-mode="manual">Manual</button>
+        <button class="tab" data-mode="playlist">Playlist</button>
+      </div>
+
+      <div id="mode-manual" class="mode-section active">
+        <div class="hero">
+          <div class="hero-input-wrapper">
+            <button id="btn-paste">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <rect x="8" y="2" width="8" height="4" rx="1" />
+                <path
+                  d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"
+                />
+                <path d="M12 11v6" />
+                <path d="M9 14l3 3 3-3" />
+              </svg>
+              Paste
+            </button>
+            <input
+              type="text"
+              id="manual-query"
+              placeholder="Paste YouTube URL or search by name..."
+              spellcheck="false"
+            />
+          </div>
+          <button id="btn-manual-search" class="btn-fetch">
+            <span class="btn-text">Fetch Media</span>
+          </button>
+        </div>
+      </div>
+
+      <div id="mode-playlist" class="mode-section">
+        <div class="input-row">
+          <select id="playlist-select">
+            <option value="">-- Select playlist --</option>
+          </select>
+        </div>
+        <div id="playlist-info" style="display: none">
+          <div class="track-progress" id="track-progress"></div>
+          <div class="input-row">
+            <input type="text" id="playlist-query" readonly />
+            <button id="btn-playlist-search" class="btn-primary">Search</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="settings-panel" class="settings-panel" style="display: none">
+        <h2>&#9881; Settings</h2>
+
+        <div class="settings-section">
+          <h3>YouTube Cookies</h3>
+          <p class="help-text">
+            yt-dlp needs YouTube session cookies.
+            <strong>Export cookies from your browser</strong>
+            (visit YouTube while logged in, then export via extension or yt-dlp
+            command).
+          </p>
+          <div class="input-row">
+            <button id="btn-cookies-detect" class="btn-primary">
+              Detect Cookies (Auto)
+            </button>
+          </div>
+          <div id="detect-result" class="cookies-status"></div>
+          <p
+            class="help-text"
+            id="detect-hint"
+            style="display: none; margin-top: 6px"
+          >
+            If auto-detect reports "locked": close your browser completely
+            (check Task Manager for lingering processes) and try again.
+          </p>
+        </div>
+
+        <div class="settings-section">
+          <h3>Saved Cookie Status</h3>
+          <div id="cookie-inspect-result" class="cookies-status"></div>
+        </div>
+
+        <div class="settings-section">
+          <h3>Manual Cookies</h3>
+          <p class="help-text">
+            Export cookies from your browser and paste below:
+          </p>
+          <ul class="help-list">
+            <li>
+              <strong>Extension</strong> — Install "cookies.txt" (Chrome/Edge)
+              or "cookies.txt" (Firefox), visit YouTube, click the extension
+              icon, and export.
+            </li>
+            <li>
+              <strong>yt-dlp command</strong> — Close your browser, then run:
+              <code
+                >yt-dlp --cookies-from-browser BROWSER --cookies
+                cookies.txt</code
+              >
+              and paste the file content.
+            </li>
+            <li>
+              <strong>Supported browsers</strong>: <code>chrome</code>,
+              <code>edge</code>, <code>firefox</code>, <code>brave</code>,
+              <code>opera</code>, <code>vivaldi</code>, <code>chromium</code>
+            </li>
+          </ul>
+          <textarea
+            id="cookies-textarea"
+            placeholder="Paste cookies.txt content here..."
+            spellcheck="false"
+          ></textarea>
+          <div class="input-row">
+            <button id="btn-cookies-save" class="btn-primary">
+              Save Cookies
+            </button>
+            <button id="btn-cookies-delete" class="btn-secondary btn-danger">
+              Delete Cookies
+            </button>
+          </div>
+          <div id="cookies-status" class="cookies-status"></div>
+        </div>
+
+        <div class="settings-section">
+          <h3>Downloaded Files</h3>
+          <div id="downloads-list"></div>
+        </div>
+
+        <div class="settings-section">
+          <h3>Rename Playlist Files</h3>
+          <p class="help-text">
+            Rename downloaded files in a playlist folder to match the playlist's
+            track names.
+          </p>
+          <div class="input-row">
+            <select id="rename-playlist-select">
+              <option value="">-- Select playlist --</option>
+            </select>
+            <button id="btn-rename-files" class="btn-primary">Rename</button>
+          </div>
+          <div id="rename-result" class="cookies-status"></div>
+        </div>
+      </div>
+
+      <div id="loading" class="loading" style="display: none">
+        <div class="spinner"></div>
+        <span id="loading-text">Searching...</span>
+      </div>
+
+      <div id="results" class="results" style="display: none"></div>
+
+      <div id="preview" class="preview" style="display: none">
+        <div class="preview-card">
+          <div class="preview-header">
+            <span id="preview-title"></span>
+            <button id="btn-preview-close" class="btn-close">&times;</button>
+          </div>
+          <div class="preview-video">
+            <iframe
+              id="preview-iframe"
+              src=""
+              allow="autoplay; encrypted-media"
+              allowfullscreen
+            ></iframe>
+          </div>
+          <div class="preview-body">
+            <div class="preview-controls">
+              <div class="format-toggle" id="format-toggle">
+                <button class="format-toggle-btn active" data-format="audio">
+                  &#x1F3B5; Audio (MP3)
+                </button>
+                <button class="format-toggle-btn" data-format="video">
+                  &#x1F3AC; Video (MP4)
+                </button>
+              </div>
+            </div>
+            <div class="quality-chips" id="quality-chips">
+              <button class="quality-chip" data-quality="2160">4K</button>
+              <button class="quality-chip" data-quality="1080">1080p</button>
+              <button
+                class="quality-chip active"
+                data-quality="720"
+                data-default
+              >
+                720p
+              </button>
+              <button class="quality-chip" data-quality="480">480p</button>
+              <button class="quality-chip" data-quality="360">360p</button>
+              <button class="quality-chip" data-quality="144">144p</button>
+            </div>
+            <div class="btn-dl-wrapper">
+              <button id="btn-dl" class="btn-dl">
+                <span class="progress-fill" id="dl-progress-fill"></span>
+                <span class="btn-text" id="dl-btn-text">
+                  <svg
+                    class="check-icon"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="3"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  <span id="dl-btn-label">Download</span>
+                </span>
+              </button>
+            </div>
+            <div
+              id="download-result"
+              class="download-result"
+              style="display: none"
+            ></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="error" class="error" style="display: none"></div>
+
+      <div class="trust-badge">
+        &#x1F512; 100% Secure. No registration required.
+      </div>
+    </div>
+
+    <script>
+      const MANUAL_INPUT = document.getElementById("manual-query");
+      const PLAYLIST_INPUT = document.getElementById("playlist-query");
+      const RESULTS = document.getElementById("results");
+      const PREVIEW = document.getElementById("preview");
+      const ERROR = document.getElementById("error");
+      const LOADING = document.getElementById("loading");
+      const LOADING_TEXT = document.getElementById("loading-text");
+      const SETTINGS_PANEL = document.getElementById("settings-panel");
+      const FETCH_BTN = document.getElementById("btn-manual-search");
+      const FORMAT_TOGGLE = document.getElementById("format-toggle");
+      const QUALITY_CHIPS = document.getElementById("quality-chips");
+      const DL_BTN = document.getElementById("btn-dl");
+      const DL_BTN_LABEL = document.getElementById("dl-btn-label");
+      const DL_PROGRESS_FILL = document.getElementById("dl-progress-fill");
+      const DL_BTN_TEXT = document.getElementById("dl-btn-text");
+
+      let selectedVideo = null;
+      let currentFilename = "";
+      let currentPlaylistName = "";
+      let playlistTracks = [];
+      let playlistIndex = -1;
+      let progressEventSource = null;
+      let selectedFormat = "audio";
+      let selectedQuality = "720";
+      let dlSuccessTimer = null;
+
+      const tabs = document.querySelectorAll(".tab");
+      tabs.forEach((t) =>
+        t.addEventListener("click", () => {
+          tabs.forEach((x) => x.classList.remove("active"));
+          t.classList.add("active");
+          document
+            .querySelectorAll(".mode-section")
+            .forEach((s) => s.classList.remove("active"));
+          document
+            .getElementById("mode-" + t.dataset.mode)
+            .classList.add("active");
+          SETTINGS_PANEL.style.display = "none";
+          clearAll();
+          if (t.dataset.mode === "manual") currentPlaylistName = "";
+        }),
+      );
+
+      document
+        .getElementById("btn-settings-toggle")
+        .addEventListener("click", () => {
+          const isOpen = SETTINGS_PANEL.style.display === "block";
+          SETTINGS_PANEL.style.display = isOpen ? "none" : "block";
+          if (!isOpen) {
+            loadCookiesStatus();
+            loadCookieInspect();
+            loadDownloads();
+          }
+          clearAll();
+        });
+
+      document
+        .getElementById("btn-manual-search")
+        .addEventListener("click", () => {
+          const q = MANUAL_INPUT.value.trim();
+          if (q) search(q, "manual");
+        });
+
+      MANUAL_INPUT.addEventListener("keydown", (e) => {
+        if (e.key === "Enter")
+          document.getElementById("btn-manual-search").click();
+      });
+
+      document
+        .getElementById("btn-paste")
+        .addEventListener("click", async () => {
+          try {
+            const text = await navigator.clipboard.readText();
+            if (text) {
+              MANUAL_INPUT.value = text;
+              MANUAL_INPUT.focus();
+            }
+          } catch (e) {
+            showError(
+              "Cannot read clipboard. Allow clipboard access or paste manually.",
+            );
+          }
+        });
+
+      document
+        .getElementById("playlist-select")
+        .addEventListener("change", async (e) => {
+          const name = e.target.value;
+          currentPlaylistName = name;
+          if (!name) {
+            document.getElementById("playlist-info").style.display = "none";
+            return;
+          }
+          const res = await fetch("/api/playlists");
+          const playlists = await res.json();
+          const pl = playlists.find((p) => p.name === name);
+          if (!pl) return;
+          playlistTracks = pl.tracks;
+          playlistIndex = 0;
+          document.getElementById("playlist-info").style.display = "block";
+          showPlaylistTrack();
+        });
+
+      document
+        .getElementById("btn-playlist-search")
+        .addEventListener("click", () => {
+          const q = PLAYLIST_INPUT.value.trim();
+          if (q) search(q, "playlist");
+        });
+
+      PLAYLIST_INPUT.addEventListener("keydown", (e) => {
+        if (e.key === "Enter")
+          document.getElementById("btn-playlist-search").click();
+      });
+
+      document
+        .getElementById("btn-preview-close")
+        .addEventListener("click", () => {
+          PREVIEW.style.display = "none";
+          document.getElementById("preview-iframe").src = "";
+          selectedVideo = null;
+          resetDownloadBtn();
+        });
+
+      document
+        .getElementById("btn-cookies-save")
+        .addEventListener("click", saveCookies);
+      document
+        .getElementById("btn-cookies-delete")
+        .addEventListener("click", deleteCookies);
+      document
+        .getElementById("btn-cookies-detect")
+        .addEventListener("click", detectCookies);
+
+      document
+        .getElementById("btn-rename-files")
+        .addEventListener("click", renamePlaylistFiles);
+
+      /* ── Format Toggle ── */
+      document.querySelectorAll(".format-toggle-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          document
+            .querySelectorAll(".format-toggle-btn")
+            .forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+          selectedFormat = btn.dataset.format;
+          updateQualityVisibility();
+        });
+      });
+
+      function updateQualityVisibility() {
+        const chips = QUALITY_CHIPS;
+        if (selectedFormat === "video") {
+          chips.style.display = "flex";
+        } else {
+          chips.style.display = "none";
+        }
+      }
+
+      /* ── Quality Chips ── */
+      document.querySelectorAll(".quality-chip").forEach((chip) => {
+        chip.addEventListener("click", () => {
+          document
+            .querySelectorAll(".quality-chip")
+            .forEach((c) => c.classList.remove("active"));
+          chip.classList.add("active");
+          selectedQuality = chip.dataset.quality;
+        });
+      });
+
+      /* ── Download Button ── */
+      DL_BTN.addEventListener("click", () => download());
+
+      function resetDownloadBtn() {
+        DL_BTN.classList.remove("success");
+        DL_BTN.disabled = false;
+        DL_PROGRESS_FILL.style.width = "0%";
+        DL_BTN_LABEL.textContent = "Download";
+        if (dlSuccessTimer) {
+          clearTimeout(dlSuccessTimer);
+          dlSuccessTimer = null;
+        }
+      }
+
+      /* ── Search / Fetch ── */
+      async function search(query, mode) {
+        clearAll();
+        setFetchLoading(true);
+        currentFilename = query;
+        try {
+          const res = await fetch(
+            "/api/search?query=" + encodeURIComponent(query) + "&max_results=8",
+          );
+          if (!res.ok) {
+            showError("Search failed");
+            setFetchLoading(false);
+            return;
+          }
+          const data = await res.json();
+          setFetchLoading(false);
+          if (!data.results || data.results.length === 0) {
+            showError("No results found");
+            return;
+          }
+          renderResults(data.results, mode);
+        } catch (err) {
+          setFetchLoading(false);
+          showError("Error: " + err.message);
+        }
+      }
+
+      function setFetchLoading(loading) {
+        if (loading) {
+          FETCH_BTN.disabled = true;
+          FETCH_BTN.innerHTML =
+            '<svg class="spinner-svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10" stroke-dasharray="31.4 31.4" stroke-linecap="round"/></svg><span>Fetching Metadata...</span>';
+        } else {
+          FETCH_BTN.disabled = false;
+          FETCH_BTN.innerHTML = '<span class="btn-text">Fetch Media</span>';
+        }
+      }
+
+      function clearAll() {
+        RESULTS.style.display = "none";
+        PREVIEW.style.display = "none";
+        ERROR.style.display = "none";
+        LOADING.style.display = "none";
+        document.getElementById("preview-iframe").src = "";
+        selectedVideo = null;
+        document.getElementById("download-result").style.display = "none";
+        resetDownloadBtn();
+        updateQualityVisibility();
+        if (progressEventSource) {
+          progressEventSource.close();
+          progressEventSource = null;
+        }
+      }
+
+      function showError(msg) {
+        ERROR.textContent = msg;
+        ERROR.style.display = "block";
+        setTimeout(() => (ERROR.style.display = "none"), 8000);
+      }
+
+      function showLoading(text) {
+        LOADING_TEXT.textContent = text || "Searching...";
+        LOADING.style.display = "flex";
+      }
+
+      function hideLoading() {
+        LOADING.style.display = "none";
+      }
+
+      function showPlaylistTrack() {
+        if (playlistIndex < 0 || playlistIndex >= playlistTracks.length) {
+          document.getElementById("track-progress").textContent = "All done!";
+          document.getElementById("playlist-info").style.display = "none";
+          return;
+        }
+        const track = playlistTracks[playlistIndex];
+        document.getElementById("track-progress").textContent =
+          `Track ${playlistIndex + 1} of ${playlistTracks.length}`;
+        PLAYLIST_INPUT.value = track;
+        clearAll();
+        document.getElementById("btn-playlist-search").click();
+      }
+
+      function renderResults(results, mode) {
+        RESULTS.innerHTML = "";
+        RESULTS.style.display = "grid";
+        results.forEach((r) => {
+          const card = document.createElement("div");
+          card.className = "result-card";
+          card.innerHTML = `
+      <div class="result-thumb">
+        <img src="${r.thumbnail}" loading="lazy" alt="">
+        ${r.duration ? `<span class="duration">${formatDuration(r.duration)}</span>` : ""}
+      </div>
+      <div class="result-info">
+        <div class="result-title" title="${escapeHtml(r.title)}">${escapeHtml(r.title)}</div>
+        <div class="result-channel">${escapeHtml(r.channel)}</div>
+      </div>
+      <div class="result-actions">
+        <button class="btn-small btn-preview" data-id="${r.id}" data-title="${escapeHtml(r.title)}" data-url="${r.url}">Preview</button>
+        <button class="btn-small btn-select" data-id="${r.id}" data-title="${escapeHtml(r.title)}" data-url="${r.url}">Select</button>
+      </div>
+    `;
+          RESULTS.appendChild(card);
+          card.querySelector(".btn-preview").addEventListener("click", () => {
+            showPreview(r.id, r.title, r.url, mode);
+          });
+          card.querySelector(".btn-select").addEventListener("click", () => {
+            showPreview(r.id, r.title, r.url, mode);
+          });
+        });
+      }
+
+      function showPreview(videoId, title, url, mode) {
+        selectedVideo = { id: videoId, title, url };
+        document.getElementById("preview-iframe").src =
+          `https://www.youtube.com/embed/${videoId}?autoplay=1`;
+        resetDownloadBtn();
+        updateQualityVisibility();
+        PREVIEW.style.display = "flex";
+
+        if (mode === "playlist") {
+          document.getElementById("preview-title").textContent =
+            currentFilename;
+        } else {
+          document.getElementById("preview-title").textContent = title;
+          currentFilename = title;
+          fetch("/api/metadata?url=" + encodeURIComponent(url))
+            .then((r) => r.json())
+            .then((data) => {
+              if (data.filename) {
+                currentFilename = data.filename;
+                document.getElementById("preview-title").textContent =
+                  data.filename;
+              }
+            })
+            .catch(() => {});
+        }
+      }
+
+      function urlHash(url) {
+        let h = 0;
+        for (let i = 0; i < url.length; i++) {
+          h = (h << 5) - h + url.charCodeAt(i);
+          h |= 0;
+        }
+        return Math.abs(h).toString(16);
+      }
+
+      function startProgressStream(url) {
+        if (progressEventSource) progressEventSource.close();
+        const hash = urlHash(url);
+        progressEventSource = new EventSource("/api/download/progress/" + hash);
+        progressEventSource.onmessage = (e) => {
+          const d = JSON.parse(e.data);
+          if (d.status === "downloading") {
+            const p =
+              d.total_bytes > 0
+                ? (d.downloaded_bytes / d.total_bytes) * 100
+                : 0;
+            const pct = Math.min(p, 100);
+            DL_PROGRESS_FILL.style.width = pct + "%";
+            const speed = d.speed
+              ? (d.speed / 1024 / 1024).toFixed(1) + " MB/s"
+              : "";
+            const time = d.eta ? d.eta + "s" : "";
+            const etaStr = [speed, time].filter(Boolean).join(" ");
+            DL_BTN_LABEL.textContent =
+              Math.round(pct) + "%" + (etaStr ? " — " + etaStr : "");
+          } else if (d.status === "finished") {
+            DL_PROGRESS_FILL.style.width = "100%";
+            DL_BTN_LABEL.textContent = "100% — Processing...";
+          }
+        };
+      }
+
+      async function download() {
+        if (!selectedVideo) {
+          showError("Select a video first");
+          return;
+        }
+
+        DL_BTN.disabled = true;
+        DL_BTN_LABEL.textContent = "Starting...";
+        document.getElementById("download-result").style.display = "none";
+
+        startProgressStream(selectedVideo.url);
+
+        try {
+          const res = await fetch("/api/download", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              url: selectedVideo.url,
+              filename: currentFilename,
+              fmt: selectedFormat === "audio" ? "mp3" : "mp4",
+              quality: selectedQuality,
+              playlist: currentPlaylistName,
+            }),
+          });
+          if (progressEventSource) {
+            progressEventSource.close();
+            progressEventSource = null;
+          }
+          if (!res.ok) {
+            const errData = await res.json();
+            showError(errData.detail || "Download failed");
+            resetDownloadBtn();
+            return;
+          }
+          const data = await res.json();
+
+          DL_PROGRESS_FILL.style.width = "100%";
+          DL_BTN_LABEL.textContent = "";
+
+          DL_BTN.classList.add("success");
+          if (dlSuccessTimer) clearTimeout(dlSuccessTimer);
+          dlSuccessTimer = setTimeout(() => {
+            DL_BTN.classList.remove("success");
+            DL_BTN.disabled = false;
+            DL_BTN_LABEL.textContent = "Download";
+            DL_PROGRESS_FILL.style.width = "0%";
+          }, 1500);
+
+          const dlUrl = "/api/download/" + encodeURIComponent(data.filename);
+          const resultEl = document.getElementById("download-result");
+          resultEl.innerHTML = `
+      <span class="success-icon">&#10003;</span>
+      <a href="${dlUrl}" download="${data.filename}">${data.filename}</a>
+      ${data.already_exists ? '<span class="exists-badge">already exists</span>' : ""}
+    `;
+          resultEl.style.display = "flex";
+
+          if (playlistTracks.length > 0) {
+            setTimeout(() => {
+              playlistIndex++;
+              showPlaylistTrack();
+            }, 1500);
+          }
+        } catch (err) {
+          if (progressEventSource) {
+            progressEventSource.close();
+            progressEventSource = null;
+          }
+          resetDownloadBtn();
+          showError("Download error: " + err.message);
+        }
+      }
+
+      fetch("/api/playlists")
+        .then((r) => r.json())
+        .then((playlists) => {
+          const sel = document.getElementById("playlist-select");
+          const renameSel = document.getElementById("rename-playlist-select");
+          playlists.forEach((p) => {
+            const opt = document.createElement("option");
+            opt.value = p.name;
+            opt.textContent = `${p.name} (${p.count} tracks)`;
+            sel.appendChild(opt);
+            const ropt = opt.cloneNode(true);
+            renameSel.appendChild(ropt);
+          });
+        });
+
+      async function renamePlaylistFiles() {
+        const sel = document.getElementById("rename-playlist-select");
+        const name = sel.value;
+        const resultEl = document.getElementById("rename-result");
+        if (!name) {
+          resultEl.innerHTML =
+            '<span class="cookies-missing">Select a playlist</span>';
+          return;
+        }
+        resultEl.innerHTML = '<span class="cookies-missing">Renaming...</span>';
+        try {
+          const res = await fetch(
+            "/api/rename/playlist/" + encodeURIComponent(name),
+            { method: "POST" },
+          );
+          const data = await res.json();
+          const renamed = data.renamed || [];
+          const errors = data.errors || [];
+          let html = "";
+          if (renamed.length > 0) {
+            html += `<span class="cookies-ok">&#10003; Renamed ${renamed.length} files</span>`;
+            html +=
+              '<br><ul style="margin-top:4px;font-size:0.82rem;color:var(--text-secondary)">';
+            renamed.forEach((r) => {
+              html += `<li>${escapeHtml(r.old)} &#8594; ${escapeHtml(r.new)}</li>`;
+            });
+            html += "</ul>";
+          }
+          if (errors.length > 0) {
+            html += `<br><span class="cookies-missing">${errors.length} errors</span>`;
+            html +=
+              '<ul style="margin-top:4px;font-size:0.82rem;color:#ef9a9a">';
+            errors.forEach((e) => {
+              html += `<li>${escapeHtml(e)}</li>`;
+            });
+            html += "</ul>";
+          }
+          if (renamed.length === 0 && errors.length === 0) {
+            html =
+              '<span class="cookies-missing">No files found to rename</span>';
+          }
+          resultEl.innerHTML = html;
+          if (renamed.length > 0) loadDownloads();
+        } catch (e) {
+          resultEl.innerHTML =
+            '<span class="cookies-missing">Error: ' + e.message + "</span>";
+        }
+      }
+
+      async function detectCookies() {
+        const el = document.getElementById("detect-result");
+        const hint = document.getElementById("detect-hint");
+        el.innerHTML =
+          '<span class="cookies-missing">Scanning browsers...</span>';
+        hint.style.display = "none";
+        try {
+          const res = await fetch("/api/cookies/detect", { method: "POST" });
+          const data = await res.json();
+          if (data.found) {
+            el.innerHTML = `<span class="cookies-ok">&#10003; ${data.total} cookies found (${data.detail})</span>`;
+            loadCookiesStatus();
+            loadCookieInspect();
+          } else {
+            const per = data.per_browser || {};
+            const details = Object.entries(per)
+              .map(([b, s]) => `${b}=${s}`)
+              .join(", ");
+            const hasLocked = Object.values(per).some((v) => v === "locked");
+            el.innerHTML = `<span class="cookies-missing">No cookies — ${details}</span>`;
+            if (hasLocked) hint.style.display = "block";
+          }
+        } catch (e) {
+          el.innerHTML =
+            '<span class="cookies-missing">Detection failed: ' +
+            e.message +
+            "</span>";
+        }
+      }
+
+      async function loadCookieInspect() {
+        const el = document.getElementById("cookie-inspect-result");
+        try {
+          const res = await fetch("/api/cookies/inspect");
+          const data = await res.json();
+          if (!data.exists) {
+            el.innerHTML =
+              '<span class="cookies-missing">No cookies file saved</span>';
+            return;
+          }
+          let html = `<span class="cookies-ok">&#10003; ${data.total_cookies} cookies from ${data.domains.join(", ")}</span>`;
+          if (
+            data.auth_cookies_present &&
+            data.auth_cookies_present.length > 0
+          ) {
+            html += `<br><span class="cookies-ok">Auth cookies: ${data.auth_cookies_present.join(", ")}</span>`;
+          }
+          if (!data.has_all_auth) {
+            html += `<br><span class="cookies-missing">Missing some auth cookies — re-export from browser while logged into YouTube</span>`;
+          }
+          el.innerHTML = html;
+        } catch (e) {
+          el.innerHTML = "";
+        }
+      }
+
+      async function loadCookiesStatus() {
+        try {
+          const res = await fetch("/api/cookies");
+          const data = await res.json();
+          const status = document.getElementById("cookies-status");
+          if (data.exists) {
+            status.innerHTML =
+              '<span class="cookies-ok">&#10003; Cookies file saved</span>';
+          } else {
+            status.innerHTML =
+              '<span class="cookies-missing">No cookies file</span>';
+          }
+        } catch (e) {
+          document.getElementById("cookies-status").textContent = "";
+        }
+      }
+
+      async function saveCookies() {
+        const content = document
+          .getElementById("cookies-textarea")
+          .value.trim();
+        if (!content) {
+          showError("Paste cookies content first");
+          return;
+        }
+        try {
+          const res = await fetch("/api/cookies", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ content }),
+          });
+          if (res.ok) {
+            document.getElementById("cookies-status").innerHTML =
+              '<span class="cookies-ok">&#10003; Cookies saved successfully</span>';
+            document.getElementById("cookies-textarea").value = "";
+            loadCookieInspect();
+          } else {
+            showError("Failed to save cookies");
+          }
+        } catch (e) {
+          showError("Error saving cookies");
+        }
+      }
+
+      async function deleteCookies() {
+        try {
+          await fetch("/api/cookies", { method: "DELETE" });
+          document.getElementById("cookies-status").innerHTML =
+            '<span class="cookies-missing">Cookies deleted</span>';
+          loadCookieInspect();
+        } catch (e) {
+          showError("Error deleting cookies");
+        }
+      }
+
+      async function loadDownloads() {
+        try {
+          const res = await fetch("/api/downloads");
+          const data = await res.json();
+          const list = document.getElementById("downloads-list");
+          if (!data.files || data.files.length === 0) {
+            list.innerHTML =
+              '<p class="help-text">No downloaded files yet.</p>';
+            return;
+          }
+          list.innerHTML =
+            "<ul>" +
+            data.files
+              .map(
+                (f) =>
+                  `<li><a href="/api/download/${encodeURIComponent(f.name).replace(/%2F/g, "/")}" download="${f.name}">${f.name}</a> <span class="file-size">(${(f.size / 1024 / 1024).toFixed(1)} MB)</span></li>`,
+              )
+              .join("") +
+            "</ul>";
+        } catch (e) {
+          document.getElementById("downloads-list").textContent = "";
+        }
+      }
+
+      function formatDuration(sec) {
+        if (!sec) return "";
+        const m = Math.floor(sec / 60);
+        const s = sec % 60;
+        return `${m}:${String(s).padStart(2, "0")}`;
+      }
+
+      function escapeHtml(str) {
+        const div = document.createElement("div");
+        div.textContent = str;
+        return div.innerHTML;
+      }
+    </script>
+  </body>
+</html>

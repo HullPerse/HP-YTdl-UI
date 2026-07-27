@@ -1,4 +1,8 @@
 cookies.txt
-oauth_config.json
-playlists/
-downloads/
+data/
+__pycache__
+node_modules/
+src/frontend/index.min.js
+dist/
+build/
+*.spec

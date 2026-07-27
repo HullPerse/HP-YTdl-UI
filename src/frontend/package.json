@@ -1,0 +1,15 @@
+{
+  "name": "hp-ytdl-ui",
+  "private": true,
+  "scripts": {
+    "build": "esbuild index.ts --bundle --outfile=index.min.js --target=es2020",
+    "watch": "esbuild index.ts --bundle --outfile=index.min.js --target=es2020 --watch"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.0",
+    "@types/bun": "latest"
+  },
+  "module": "index.ts",
+  "type": "module"
+}

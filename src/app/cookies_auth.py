@@ -6,7 +6,9 @@ from urllib.parse import urlparse
 from .config import COOKIES_FILE, get_cookie_browser_targets
 
 try:
-    from yt_dlp.cookies import extract_cookies_from_browser  # type: ignore[attr-defined]
+    from yt_dlp.cookies import (
+        extract_cookies_from_browser,  # type: ignore[attr-defined]
+    )
 except Exception:  # noqa: BLE001
     extract_cookies_from_browser = None  # type: ignore[assignment]
 
@@ -47,7 +49,6 @@ def _save_cookies_from_cookiejar(jar) -> list[str] | None:  # pyright: ignore[re
     if not youtube_cookies:
         return None
     found_auth = [c.name for c in youtube_cookies if c.name in AUTH_COOKIE_NAMES and c.value]
-    import http.cookiejar
     netscape = _cookiejar_to_netscape_py(jar)
     COOKIES_FILE.parent.mkdir(parents=True, exist_ok=True)
     COOKIES_FILE.write_text(netscape, encoding="utf-8")
@@ -116,18 +117,18 @@ class _SignInBridge:
                 state["in_progress"] = False
                 try:
                     window.destroy()
-                except Exception:
+                except Exception:  # noqa: BLE001, S110
                     pass
                 return
 
             state["_extracted"] = False
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             state["result"] = {"success": False, "error": str(e)}
             state["done"] = True
             state["in_progress"] = False
             try:
                 window.destroy()
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
                 pass
 
 
@@ -159,10 +160,10 @@ def _start_signin_desktop() -> None:
         if parsed.netloc in ("www.youtube.com", "m.youtube.com", "youtube.com"):
             state["_extracted"] = True
             try:
-                window.evaluate_js(
+                window.evaluate_js(  # pyright: ignore[reportOptionalMemberAccess]
                     "setTimeout(function() { window.pywebview.api.extract_cookies(); }, 5000);"
                 )
-            except Exception:  # noqa: BLE001,S112
+            except Exception:  # noqa: BLE001
                 state["_extracted"] = False
 
     def _on_closed() -> None:
@@ -171,8 +172,8 @@ def _start_signin_desktop() -> None:
             state["done"] = True
             state["in_progress"] = False
 
-    window.events.loaded += _on_loaded
-    window.events.closed += _on_closed
+    window.events.loaded += _on_loaded  # pyright: ignore[reportOptionalMemberAccess]
+    window.events.closed += _on_closed  # pyright: ignore[reportOptionalMemberAccess]
 
 
 # ── Web mode (system browser + polling) ──────────────────────────────

@@ -69,7 +69,7 @@ async def api_stream(video_id: str, quality: str = "360"):
     try:
         stream_url = await loop.run_in_executor(executor, get_video_stream_url_sync, video_id, quality)
         return {"url": stream_url}
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -253,6 +253,11 @@ class PlaylistImportRequest(BaseModel):
     name: str
 
 
+class PlaylistCheckRequest(BaseModel):
+    tracks: list[str]
+    template: str
+
+
 @app.post("/api/playlists/import")
 async def api_import_playlist(req: PlaylistImportRequest):
     if not req.url.strip() or not req.name.strip():
@@ -275,6 +280,41 @@ async def api_import_playlist_from_url(req: PlaylistImportRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
     return result
+
+
+@app.post("/api/playlists/check-existing")
+async def api_check_existing(req: PlaylistCheckRequest):
+    existing = []
+    for i, track in enumerate(req.tracks):
+        parsed = parse_youtube_title(track)
+        fields = {
+            "artist": parsed.get("artist", ""),
+            "title": parsed.get("title", ""),
+            "misc": parsed.get("misc", ""),
+            "channel": "",
+            "id": "",
+            "ext": "",
+            "playlist": "",
+            "quality": "",
+            "source_title": track,
+        }
+        name = req.template
+        name = name.replace("{artist}", fields["artist"] or "")
+        name = name.replace("{title}", fields["title"] or "")
+        name = name.replace("{misc}", f" [{fields['misc']}]" if fields["misc"] else "")
+        name = name.replace("{channel}", "")
+        name = name.replace("{id}", "")
+        name = name.replace("{ext}", "")
+        name = name.replace("{playlist}", "")
+        name = name.replace("{quality}", "")
+        name = name.replace("{source_title}", track)
+        name = " ".join(name.split()).strip()
+        safe = sanitize_filename(name)
+        for ext in (".mp3", ".mp4", ".m4a", ".webm"):
+            if (DOWNLOADS_DIR / f"{safe}{ext}").exists():
+                existing.append(i)
+                break
+    return {"existing": existing}
 
 
 @app.get("/api/ytdlp/version")

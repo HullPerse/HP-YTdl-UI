@@ -12,16 +12,16 @@ import yt_dlp  # type: ignore[import-untyped]
 from yt_dlp.utils import DownloadError as YtDownloadError  # type: ignore[attr-defined]
 
 try:
-    from yt_dlp.cookies import extract_cookies_from_browser  # type: ignore[attr-defined]
+    from yt_dlp.cookies import (
+        extract_cookies_from_browser,  # type: ignore[attr-defined]
+    )
 except Exception:  # noqa: BLE001
     extract_cookies_from_browser = None  # type: ignore[assignment]
 
 from .config import (
-    CHROME_PROFILES,
     COOKIES_FILE,
     EXTRACTOR_ARGS,
     PLAYLISTS_DIR,
-    STANDARD_BROWSERS,
     USER_AGENT,
     download_progress,
     get_cookie_browser_targets,
@@ -222,7 +222,7 @@ def _persist_cookies_from_browser(browser_name: str, profile: str | None = None)
                     netscape = _cookiejar_to_netscape(jar)
                     COOKIES_FILE.parent.mkdir(parents=True, exist_ok=True)
                     COOKIES_FILE.write_text(netscape, encoding="utf-8")
-        except Exception:  # noqa: BLE001,S112
+        except Exception:  # noqa: BLE001, S110
             pass
 
 
@@ -236,7 +236,7 @@ def download_sync(url: str, output_path: str, fmt: str, quality: str = "720", in
             _ = ydl.download([url])
     except YtDownloadError as e:
         error_str = str(e)
-        if "cookiefile" in ydl_opts and ("403" in error_str or "forbidden" in error_str.lower()):
+        if "cookiefile" in ydl_opts and ("403" in error_str or "forbidden" in error_str.lower()):  # noqa: SIM102
             if _try_cookiesfrombrowser(ydl_opts, url):
                 return
         raise DownloadError(str(e))
@@ -265,7 +265,7 @@ def get_video_stream_url_sync(video_id: str, quality: str = "360") -> str:
         "format": f"best[height<={quality}]/best",
     }
     _add_cookies_to_opts(ydl_opts)
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:  # pyright: ignore[reportArgumentType]
         info = ydl.extract_info(url, download=False)
     return str(info.get("url", ""))
 
@@ -463,7 +463,9 @@ def _get_installed_ytdlp_version() -> str:
     if ver:
         return ver
     try:
-        from importlib.metadata import version as _dist_version  # type: ignore[import-not-found]
+        from importlib.metadata import (
+            version as _dist_version,  # type: ignore[import-not-found]
+        )
         return _dist_version("yt-dlp")
     except Exception:  # noqa: BLE001
         return ""

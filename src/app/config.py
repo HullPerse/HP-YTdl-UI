@@ -13,7 +13,7 @@ DATA_DIR = APP_DIR / "data"
 
 PLAYLISTS_DIR = DATA_DIR / "playlists"
 DOWNLOADS_DIR = DATA_DIR / "downloads"
-COOKIES_FILE = APP_DIR / "cookies.txt"
+COOKIES_FILE = DATA_DIR / "cookies.txt"
 
 PLAYLISTS_DIR.mkdir(parents=True, exist_ok=True)
 DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
@@ -55,7 +55,7 @@ APP_MODE = "web"
 
 
 def set_app_mode(mode: str) -> None:
-    global APP_MODE  # noqa: PLW0603
+    global APP_MODE
     APP_MODE = mode
 
 

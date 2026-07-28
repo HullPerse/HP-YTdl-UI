@@ -186,6 +186,7 @@ function setFetchLoading(v: boolean): void {
 }
 
 function clearAll(): void {
+  currentFilename = "";
   RESULTS.style.display = "none";
   PREVIEW.style.display = "none";
   ERROR.style.display = "none";
@@ -406,34 +407,55 @@ function showPreview(
   PREVIEW.style.display = "flex";
   const titleEl = $("preview-title");
   if (!titleEl) return;
-  if (mode === "playlist") {
-    titleEl.textContent = currentFilename;
-  } else {
-    titleEl.textContent = title;
-    currentFilename = title;
-    fetch("/api/metadata?url=" + encodeURIComponent(url))
-      .then((r) => r.json())
-      .then((data: Metadata) => {
-        cachedMetadataFields = {
-          artist: data.artist || "",
-          title: data.title || "",
-          misc: data.misc || "",
-          channel: data.channel || "",
-          id: data.id || "",
-          source_title: data.source_title || "",
-        };
-        reapplyTemplate();
-      })
-      .catch(() => {});
-  }
+  // Apply template immediately with raw title data (before metadata arrives)
+  const tpl = localStorage.getItem("filenameTemplate") || "{artist} - {title}{misc}";
+  const sepIdx = title.indexOf(" - ");
+  const fields = {
+    artist: sepIdx > 0 ? title.substring(0, sepIdx).trim() : "",
+    title: sepIdx > 0 ? title.substring(sepIdx + 3).trim() : title,
+    misc: "",
+    channel: "",
+    id: videoId,
+    source_title: title,
+    ext: selectedFormat === "audio" ? "mp3" : "mp4",
+    playlist: currentPlaylistName || "",
+    quality: selectedQuality,
+  };
+  currentFilename = applyFilenameTemplate(fields, tpl);
+  titleEl.textContent = currentFilename;
+  // Then fetch metadata for better template reapplication
+  fetch("/api/metadata?url=" + encodeURIComponent(url))
+    .then((r) => r.json())
+    .then((data: Metadata) => {
+      cachedMetadataFields = {
+        artist: data.artist || "",
+        title: data.title || "",
+        misc: data.misc || "",
+        channel: data.channel || "",
+        id: data.id || "",
+        source_title: data.source_title || "",
+      };
+      reapplyTemplate();
+    })
+    .catch(() => {});
+}
+
+function clearPlaylistState(): void {
+  playlistTracks = [];
+  playlistIndex = -1;
+  currentPlaylistName = "";
+  const sel = $sel("playlist-select");
+  if (sel) sel.value = "";
+  $("playlist-info").style.display = "none";
+  PREVIEW.style.display = "none";
+  clearAll();
 }
 
 function showPlaylistTrack(): void {
   if (playlistIndex < 0 || playlistIndex >= playlistTracks.length) {
+    clearPlaylistState();
     const te = $("track-progress");
     if (te) te.textContent = "All done!";
-    const ie = $("playlist-info");
-    if (ie) ie.style.display = "none";
     return;
   }
   const te = $("track-progress");
@@ -663,16 +685,19 @@ async function downloadAllPlaylist(): Promise<void> {
       if (data.results?.[0]) {
         const r = data.results[0];
         const outputDir = localStorage.getItem("outputDir") || "";
+        const tpl = localStorage.getItem("filenameTemplate") || "{artist} - {title}{misc}";
+        const rawTitle = r.title;
+        const sepIdx = rawTitle.indexOf(" - ");
         const parsedFilename = applyFilenameTemplate(
           {
-            artist: "",
-            title: r.title,
+            artist: sepIdx > 0 ? rawTitle.substring(0, sepIdx).trim() : "",
+            title: sepIdx > 0 ? rawTitle.substring(sepIdx + 3).trim() : rawTitle,
             misc: "",
             channel: "",
             id: r.id,
-            source_title: r.title,
+            source_title: rawTitle,
           },
-          "{artist} - {title}{misc}",
+          tpl,
         );
         await fetch("/api/queue/add", {
           method: "POST",
@@ -760,20 +785,28 @@ document.querySelectorAll(".tab").forEach((t) => {
     if (me) me.classList.add("active");
     SETTINGS_PANEL.style.display = "none";
     if (tab.dataset.mode !== "queue") clearAll();
-    if (tab.dataset.mode === "manual") currentPlaylistName = "";
+    if (tab.dataset.mode !== "playlist") clearPlaylistState();
   });
 });
 
 $btn("btn-settings-toggle").addEventListener("click", () => {
-  const isOpen = SETTINGS_PANEL.style.display === "block";
-  SETTINGS_PANEL.style.display = isOpen ? "none" : "block";
+  const isOpen = SETTINGS_PANEL.style.display === "flex";
+  SETTINGS_PANEL.style.display = isOpen ? "none" : "flex";
   if (!isOpen) {
     loadCookiesStatus();
     loadCookieInspect();
     loadDownloads();
     loadYtdlpVersion();
   }
-  clearAll();
+clearAll();
+});
+
+SETTINGS_PANEL.addEventListener("click", (e) => {
+  if (e.target === SETTINGS_PANEL) SETTINGS_PANEL.style.display = "none";
+});
+
+$btn("btn-settings-close").addEventListener("click", () => {
+  SETTINGS_PANEL.style.display = "none";
 });
 
 document.querySelectorAll(".settings-tab").forEach((t) => {
@@ -837,8 +870,21 @@ $sel("playlist-select").addEventListener("change", async (e: Event) => {
   const playlists: PlaylistInfo[] = await res.json();
   const pl = playlists.find((p) => p.name === name);
   if (!pl) return;
-  playlistTracks = pl.tracks;
+playlistTracks = pl.tracks;
   playlistIndex = 0;
+  const tpl = localStorage.getItem("filenameTemplate") || "{artist} - {title}{misc}";
+  const checkRes = await fetch("/api/playlists/check-existing", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tracks: pl.tracks, template: tpl }),
+  });
+  const checkData = await checkRes.json();
+  const existingIndices = new Set(checkData.existing as number[]);
+  if (existingIndices.size > 0) {
+    while (playlistIndex < playlistTracks.length && existingIndices.has(playlistIndex)) {
+      playlistIndex++;
+    }
+  }
   $("playlist-info").style.display = "block";
   const dlBtn = $btn("btn-playlist-dlall");
   if (dlBtn) dlBtn.style.display = pl.tracks.length > 0 ? "" : "none";
@@ -908,6 +954,16 @@ tplInput.addEventListener("input", () => {
     tplInput.value.trim() || "{artist} - {title}{misc}",
   );
   if (selectedVideo && cachedMetadataFields) reapplyTemplate();
+});
+
+document.querySelectorAll(".help-text code").forEach((el) => {
+  el.addEventListener("click", () => {
+    const tag = el.textContent || "";
+    const cursorPos = tplInput.selectionStart || tplInput.value.length;
+    tplInput.value = tplInput.value.slice(0, cursorPos) + tag + tplInput.value.slice(cursorPos);
+    tplInput.dispatchEvent(new Event("input"));
+    tplInput.focus();
+  });
 });
 
 $sel("default-quality").addEventListener("change", (e: Event) => {
@@ -1038,7 +1094,7 @@ async function renderYtdlpVersion(data: YtdlpVersionInfo): Promise<void> {
   const latestRow = $("ytdlp-latest");
   if (latestRow) {
     if (data.latest) {
-      const same = data.version && data.version === data.latest;
+      const same = !data.update_available;
       latestRow.innerHTML = same
         ? `<span class="cookies-ok">&#10003; Up to date (latest: ${data.latest})</span>`
         : `<span class="cookies-missing">Latest on PyPI: ${data.latest}${data.version ? " — update available" : ""}</span>`;
@@ -1402,3 +1458,4 @@ async function loadDownloads(): Promise<void> {
     if (list) list.textContent = "";
   }
 }
+

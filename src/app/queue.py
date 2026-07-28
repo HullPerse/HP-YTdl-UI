@@ -106,7 +106,7 @@ class DownloadQueueManager:
 
     def set_max_concurrent(self, n: int) -> None:
         with self._lock:
-            self._max_concurrent = max(1, n)
+            self._max_concurrent = max(0, n)
 
     def get_state(self) -> list[dict[str, Any]]:  # pyright: ignore[reportExplicitAny]
         with self._lock:
@@ -114,7 +114,7 @@ class DownloadQueueManager:
 
     def _try_process(self) -> None:
         with self._lock:
-            while self._active_count < self._max_concurrent:
+            while self._max_concurrent == 0 or self._active_count < self._max_concurrent:
                 waiting = [it for it in self.items if it.status == "waiting"]
                 if not waiting:
                     break

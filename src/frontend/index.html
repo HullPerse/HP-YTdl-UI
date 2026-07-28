@@ -109,227 +109,234 @@
       </div>
 
       <div id="settings-panel" class="settings-panel" style="display: none">
-        <h2>&#9881; Settings</h2>
-        <div class="settings-tabs">
-          <button class="settings-tab active" data-stab="general">
-            General
-          </button>
-          <button class="settings-tab" data-stab="cookies">Cookies</button>
-          <button class="settings-tab" data-stab="downloads">Downloads</button>
-          <button class="settings-tab" data-stab="updates">Updates</button>
-        </div>
-
-        <div class="settings-stab active" data-stab="general">
-          <div class="settings-section">
-            <h3>Filename Template</h3>
-            <p class="help-text">
-              Customize the output filename. Placeholders:
-            </p>
-            <p class="help-text" style="font-size: 0.8rem; margin-top: 4px">
-              <code>{artist}</code> <code>{title}</code> <code>{misc}</code>
-              <code>{channel}</code> <code>{id}</code> <code>{ext}</code>
-              <code>{playlist}</code> <code>{quality}</code>
-              <code>{source_title}</code>
-            </p>
-            <input
-              type="text"
-              id="filename-template"
-              class="template-input"
-              value="{artist} - {title}{misc}"
-              spellcheck="false"
-            />
+        <div class="preview-card" style="max-height: 90vh; overflow-y: auto;">
+          <div class="preview-header">
+            <span>&#9881; Settings</span>
+            <button id="btn-settings-close" class="btn-close">&times;</button>
           </div>
-
-          <div class="settings-section">
-            <h3>Default Quality</h3>
-            <select id="default-quality" class="template-input">
-              <option value="2160">4K</option>
-              <option value="1080">1080p</option>
-              <option value="720" selected>720p</option>
-              <option value="480">480p</option>
-              <option value="360">360p</option>
-              <option value="144">144p</option>
-            </select>
-          </div>
-
-          <div class="settings-section">
-            <h3>Max Concurrent Downloads</h3>
-            <input
-              type="number"
-              id="max-concurrent"
-              class="template-input"
-              value="2"
-              min="1"
-              max="5"
-            />
-          </div>
-
-          <div class="settings-section">
-            <h3>Output Folder</h3>
-            <p class="help-text">
-              Leave empty to use app default (<code>downloads/</code>).
-            </p>
-            <input
-              type="text"
-              id="output-dir"
-              class="template-input"
-              placeholder="e.g. C:\Users\You\Desktop\youtube"
-              spellcheck="false"
-            />
-          </div>
-        </div>
-
-        <div class="settings-stab" data-stab="cookies">
-          <div class="settings-section">
-            <h3>YouTube Cookies</h3>
-            <p class="help-text">
-              yt-dlp needs YouTube session cookies.
-              <strong>Export cookies from your browser</strong>
-              (visit YouTube while logged in, then export via extension or
-              yt-dlp command).
-            </p>
-            <div class="input-row">
-              <button id="btn-cookies-detect" class="btn-primary">
-                Detect Cookies (Auto)
+          <div style="padding: 1.25rem">
+            <div class="settings-tabs">
+              <button class="settings-tab active" data-stab="general">
+                General
               </button>
-              <button id="btn-cookies-signin" class="btn-primary">
-                Sign in to YouTube
-              </button>
+              <button class="settings-tab" data-stab="cookies">Cookies</button>
+              <button class="settings-tab" data-stab="downloads">Downloads</button>
+              <button class="settings-tab" data-stab="updates">Updates</button>
             </div>
-            <div id="signin-status" class="cookies-status"></div>
-            <div id="detect-result" class="cookies-status"></div>
-            <p
-              class="help-text"
-              id="detect-hint"
-              style="display: none; margin-top: 6px"
-            >
-              If auto-detect reports "locked": close your browser completely
-              (check Task Manager for lingering processes) and try again.
-            </p>
-          </div>
-          <div class="settings-section">
-            <h3>Saved Cookie Status</h3>
-            <div id="cookie-inspect-result" class="cookies-status"></div>
-          </div>
-          <div class="settings-section">
-            <h3>Manual Cookies</h3>
-            <p class="help-text">
-              Export cookies from your browser and paste below:
-            </p>
-            <ul class="help-list">
-              <li>
-                <strong>Extension</strong> — Install "cookies.txt" (Chrome/Edge)
-                or "cookies.txt" (Firefox), visit YouTube, click the extension
-                icon, and export.
-              </li>
-              <li>
-                <strong>yt-dlp command</strong> — Close your browser, then run:
-                <code
-                  >yt-dlp --cookies-from-browser BROWSER --cookies
-                  cookies.txt</code
+
+            <div class="settings-stab active" data-stab="general">
+              <div class="settings-section">
+                <h3>Filename Template</h3>
+                <p class="help-text">
+                  Customize the output filename. Placeholders:
+                </p>
+                <p class="help-text" style="font-size: 0.8rem; margin-top: 4px">
+                  <code>{artist}</code> <code>{title}</code> <code>{misc}</code>
+                  <code>{channel}</code> <code>{id}</code> <code>{ext}</code>
+                  <code>{playlist}</code> <code>{quality}</code>
+                  <code>{source_title}</code>
+                </p>
+                <input
+                  type="text"
+                  id="filename-template"
+                  class="template-input"
+                  value="{artist} - {title}{misc}"
+                  spellcheck="false"
+                />
+              </div>
+
+              <div class="settings-section">
+                <h3>Default Quality</h3>
+                <select id="default-quality" class="template-input">
+                  <option value="2160">4K</option>
+                  <option value="1080">1080p</option>
+                  <option value="720" selected>720p</option>
+                  <option value="480">480p</option>
+                  <option value="360">360p</option>
+                  <option value="144">144p</option>
+                </select>
+              </div>
+
+              <div class="settings-section">
+                <h3>Max Concurrent Downloads</h3>
+                <input
+                  type="number"
+                  id="max-concurrent"
+                  class="template-input"
+                  value="2"
+                  min="0"
+                  max="5"
+                />
+              </div>
+
+              <div class="settings-section">
+                <h3>Output Folder</h3>
+                <p class="help-text">
+                  Leave empty to use app default (<code>downloads/</code>).
+                </p>
+                <input
+                  type="text"
+                  id="output-dir"
+                  class="template-input"
+                  placeholder="e.g. C:\Users\You\Desktop\youtube"
+                  spellcheck="false"
+                />
+              </div>
+            </div>
+
+            <div class="settings-stab" data-stab="cookies">
+              <div class="settings-section">
+                <h3>YouTube Cookies</h3>
+                <p class="help-text">
+                  yt-dlp needs YouTube session cookies.
+                  <strong>Export cookies from your browser</strong>
+                  (visit YouTube while logged in, then export via extension or
+                  yt-dlp command).
+                </p>
+                <div class="input-row">
+                  <button id="btn-cookies-detect" class="btn-primary">
+                    Detect Cookies (Auto)
+                  </button>
+                  <button id="btn-cookies-signin" class="btn-primary">
+                    Sign in to YouTube
+                  </button>
+                </div>
+                <div id="signin-status" class="cookies-status"></div>
+                <div id="detect-result" class="cookies-status"></div>
+                <p
+                  class="help-text"
+                  id="detect-hint"
+                  style="display: none; margin-top: 6px"
                 >
-                and paste the file content.
-              </li>
-            </ul>
-            <textarea
-              id="cookies-textarea"
-              placeholder="Paste cookies.txt content here..."
-              spellcheck="false"
-            ></textarea>
-            <div class="input-row">
-              <button id="btn-cookies-save" class="btn-primary">
-                Save Cookies
-              </button>
-              <button id="btn-cookies-delete" class="btn-secondary btn-danger">
-                Delete Cookies
-              </button>
+                  If auto-detect reports "locked": close your browser completely
+                  (check Task Manager for lingering processes) and try again.
+                </p>
+              </div>
+              <div class="settings-section">
+                <h3>Saved Cookie Status</h3>
+                <div id="cookie-inspect-result" class="cookies-status"></div>
+              </div>
+              <div class="settings-section">
+                <h3>Manual Cookies</h3>
+                <p class="help-text">
+                  Export cookies from your browser and paste below:
+                </p>
+                <ul class="help-list">
+                  <li>
+                    <strong>Extension</strong> — Install "cookies.txt" (Chrome/Edge)
+                    or "cookies.txt" (Firefox), visit YouTube, click the extension
+                    icon, and export.
+                  </li>
+                  <li>
+                    <strong>yt-dlp command</strong> — Close your browser, then run:
+                    <code
+                      >yt-dlp --cookies-from-browser BROWSER --cookies
+                      cookies.txt</code
+                    >
+                    and paste the file content.
+                  </li>
+                </ul>
+                <textarea
+                  id="cookies-textarea"
+                  placeholder="Paste cookies.txt content here..."
+                  spellcheck="false"
+                ></textarea>
+                <div class="input-row">
+                  <button id="btn-cookies-save" class="btn-primary">
+                    Save Cookies
+                  </button>
+                  <button id="btn-cookies-delete" class="btn-secondary btn-danger">
+                    Delete Cookies
+                  </button>
+                </div>
+                <div id="cookies-status" class="cookies-status"></div>
+              </div>
+              <div class="settings-section">
+                <h3>Rename Playlist Files</h3>
+                <p class="help-text">
+                  Rename downloaded files in a playlist folder to match the
+                  playlist's track names.
+                </p>
+                <div class="input-row">
+                  <select id="rename-playlist-select">
+                    <option value="">-- Select playlist --</option>
+                  </select>
+                  <button id="btn-rename-files" class="btn-primary">Rename</button>
+                </div>
+                <div id="rename-result" class="cookies-status"></div>
+              </div>
             </div>
-            <div id="cookies-status" class="cookies-status"></div>
-          </div>
-          <div class="settings-section">
-            <h3>Rename Playlist Files</h3>
-            <p class="help-text">
-              Rename downloaded files in a playlist folder to match the
-              playlist's track names.
-            </p>
-            <div class="input-row">
-              <select id="rename-playlist-select">
-                <option value="">-- Select playlist --</option>
-              </select>
-              <button id="btn-rename-files" class="btn-primary">Rename</button>
-            </div>
-            <div id="rename-result" class="cookies-status"></div>
-          </div>
-        </div>
 
-        <div class="settings-stab" data-stab="downloads">
-          <div class="settings-section">
-            <h3>Playlist Import from URL</h3>
-            <p class="help-text">
-              Paste a YouTube playlist URL to create a local playlist.
-            </p>
-            <div class="input-row">
-              <input
-                type="text"
-                id="import-playlist-url"
-                class="template-input"
-                placeholder="YouTube playlist URL"
-                spellcheck="false"
-              />
-              <input
-                type="text"
-                id="import-playlist-name"
-                class="template-input"
-                placeholder="Playlist name"
-                spellcheck="false"
-              />
-              <button id="btn-import-playlist" class="btn-primary">
-                Import
-              </button>
-              <button
-                id="btn-import-from-url"
-                class="btn-primary"
-                title="Reads clipboard and fetches name from YouTube"
-              >
-                Import from URL
-              </button>
+            <div class="settings-stab" data-stab="downloads">
+              <div class="settings-section">
+                <h3>Playlist Import from URL</h3>
+                <p class="help-text">
+                  Paste a YouTube playlist URL to create a local playlist.
+                </p>
+                <div class="input-row">
+                  <input
+                    type="text"
+                    id="import-playlist-url"
+                    class="template-input"
+                    placeholder="YouTube playlist URL"
+                    spellcheck="false"
+                  />
+                  <input
+                    type="text"
+                    id="import-playlist-name"
+                    class="template-input"
+                    placeholder="Playlist name"
+                    spellcheck="false"
+                  />
+                  <button id="btn-import-playlist" class="btn-primary">
+                    Import
+                  </button>
+                  <button
+                    id="btn-import-from-url"
+                    class="btn-primary"
+                    title="Reads clipboard and fetches name from YouTube"
+                  >
+                    Import from URL
+                  </button>
+                </div>
+                <div id="import-result" class="cookies-status"></div>
+              </div>
+              <div class="settings-section">
+                <h3>Downloaded Files</h3>
+                <div id="downloads-list"></div>
+              </div>
             </div>
-            <div id="import-result" class="cookies-status"></div>
-          </div>
-          <div class="settings-section">
-            <h3>Downloaded Files</h3>
-            <div id="downloads-list"></div>
-          </div>
-        </div>
 
-        <div class="settings-stab" data-stab="updates">
-          <div class="settings-section">
-            <h3>yt-dlp</h3>
-            <p class="help-text">
-              Current version: <span id="ytdlp-version">—</span>
-            </p>
-            <div id="ytdlp-latest" class="cookies-status"></div>
-            <p
-              id="ytdlp-frozen-note"
-              class="help-text"
-              style="display: none; margin-top: 6px"
-            >
-              This is a portable build. yt-dlp is bundled — download a new
-              release to update it.
-            </p>
-            <div class="input-row">
-              <button id="btn-ytdlp-check" class="btn-primary">
-                Check for Updates
-              </button>
-              <button
-                id="btn-ytdlp-update"
-                class="btn-primary"
-                style="display: none"
-              >
-                Update
-              </button>
+            <div class="settings-stab" data-stab="updates">
+              <div class="settings-section">
+                <h3>yt-dlp</h3>
+                <p class="help-text">
+                  Current version: <span id="ytdlp-version">—</span>
+                </p>
+                <div id="ytdlp-latest" class="cookies-status"></div>
+                <p
+                  id="ytdlp-frozen-note"
+                  class="help-text"
+                  style="display: none; margin-top: 6px"
+                >
+                  This is a portable build. yt-dlp is bundled — download a new
+                  release to update it.
+                </p>
+                <div class="input-row">
+                  <button id="btn-ytdlp-check" class="btn-primary">
+                    Check for Updates
+                  </button>
+                  <button
+                    id="btn-ytdlp-update"
+                    class="btn-primary"
+                    style="display: none"
+                  >
+                    Update
+                  </button>
+                </div>
+                <div id="ytdlp-result" class="cookies-status"></div>
+              </div>
             </div>
-            <div id="ytdlp-result" class="cookies-status"></div>
           </div>
         </div>
       </div>

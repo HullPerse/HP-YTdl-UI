@@ -83,6 +83,8 @@ const QUEUE_STATS = $("queue-stats");
 const MODAL = $("modal");
 const MODAL_TEXT = $("modal-text");
 const MODAL_TITLE = $("modal-title");
+const CONFLICT_MODAL = $("conflict-modal");
+const CONFLICT_MODAL_TEXT = $("conflict-modal-text");
 
 let selectedVideo: SelectedVideo | null = null;
 let currentFilename = "";
@@ -98,6 +100,7 @@ let cachedMetadataFields: MetadataFields | null = null;
 let queueItems: QueueItemData[] = [];
 let modalResolve: ((v: boolean) => void) | null = null;
 let dnldItemId: string | null = null;
+let conflictResolving = false;
 
 function escapeHtml(str: string): string {
   const div = document.createElement("div");
@@ -227,6 +230,24 @@ function showModal(title: string, text: string): Promise<boolean> {
   MODAL.style.display = "flex";
   return new Promise((resolve) => {
     modalResolve = resolve;
+  });
+}
+
+function showConflictModal(text: string): Promise<"overwrite" | "skip" | null> {
+  CONFLICT_MODAL_TEXT.textContent = text;
+  CONFLICT_MODAL.style.display = "flex";
+  return new Promise((resolve) => {
+    const cleanup = () => {
+      CONFLICT_MODAL.style.display = "none";
+      $btn("btn-conflict-skip").onclick = null;
+      $btn("btn-conflict-overwrite").onclick = null;
+      $btn("btn-conflict-cancel").onclick = null;
+      $btn("btn-conflict-close").onclick = null;
+    };
+    $btn("btn-conflict-skip").onclick = () => { cleanup(); resolve("skip"); };
+    $btn("btn-conflict-overwrite").onclick = () => { cleanup(); resolve("overwrite"); };
+    $btn("btn-conflict-cancel").onclick = () => { cleanup(); resolve(null); };
+    $btn("btn-conflict-close").onclick = () => { cleanup(); resolve(null); };
   });
 }
 
@@ -505,7 +526,9 @@ function renderQueue(): void {
               ? "&#10007;"
               : it.status === "cancelled"
                 ? "&#8211;"
-                : "&#9632;";
+                : it.status === "conflict"
+                  ? "&#9888;"
+                  : "&#9632;";
       const canMoveUp = idx > 0 && it.status === "waiting";
       const canMoveDown =
         idx < queueItems.length - 1 && it.status === "waiting";
@@ -571,6 +594,14 @@ async function queueSkip(id: string): Promise<void> {
   await fetch("/api/queue/skip/" + encodeURIComponent(id), { method: "POST" });
 }
 
+async function resolveConflict(id: string, action: string): Promise<void> {
+  await fetch("/api/queue/resolve/" + encodeURIComponent(id), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action }),
+  });
+}
+
 function connectQueueSSE(): void {
   if (queueEventSource) {
     queueEventSource.close();
@@ -619,6 +650,22 @@ function connectQueueSSE(): void {
                 showPlaylistTrack();
               }, 1500);
             }
+          } else if (myItem.status === "conflict" && !conflictResolving) {
+            conflictResolving = true;
+            const fname = myItem.filename + "." + myItem.fmt;
+            showConflictModal(
+              `"${fname}" already exists in downloads directory.\n\nOverwrite the existing file or skip this track?`,
+            ).then(async (action) => {
+              if (action === "overwrite") {
+                DL_BTN_LABEL.textContent = "Overwriting...";
+                await resolveConflict(myItem.id, "overwrite");
+              } else if (action === "skip") {
+                await resolveConflict(myItem.id, "skip");
+              } else {
+                resetDownloadBtn();
+              }
+              conflictResolving = false;
+            });
           } else if (myItem.status === "failed") {
             showError("Download failed: " + myItem.error);
             resetDownloadBtn();

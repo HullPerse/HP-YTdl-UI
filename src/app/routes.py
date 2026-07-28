@@ -222,6 +222,18 @@ async def queue_skip(item_id: str):
     return {"ok": ok}
 
 
+class QueueResolveRequest(BaseModel):
+    action: str  # "overwrite" | "skip"
+
+
+@app.post("/api/queue/resolve/{item_id}")
+async def queue_resolve(item_id: str, req: QueueResolveRequest):
+    ok = download_queue.resolve_conflict(item_id, req.action)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Cannot resolve conflict")
+    return {"ok": True}
+
+
 @app.delete("/api/queue/{item_id}")
 async def queue_delete(item_id: str):
     ok = download_queue.remove(item_id)

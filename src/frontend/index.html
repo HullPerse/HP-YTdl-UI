@@ -368,6 +368,23 @@
         </div>
       </div>
 
+      <div id="conflict-modal" class="preview" style="display: none">
+        <div class="preview-card" style="max-width: 32rem">
+          <div class="preview-header">
+            <span>File Already Exists</span>
+            <button id="btn-conflict-close" class="btn-close">&times;</button>
+          </div>
+          <div class="preview-body">
+            <p id="conflict-modal-text" class="help-text"></p>
+            <div class="input-row" style="justify-content: flex-end">
+              <button id="btn-conflict-overwrite" class="btn-danger btn-primary">Overwrite</button>
+              <button id="btn-conflict-skip" class="btn-primary">Skip</button>
+              <button id="btn-conflict-cancel" class="btn-secondary">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div id="preview" class="preview" style="display: none">
         <div class="preview-card">
           <div class="preview-header">

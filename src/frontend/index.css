@@ -1131,6 +1131,10 @@ select option {
   z-index: 1000;
 }
 
+#conflict-modal {
+  z-index: 1001;
+}
+
 #modal .preview-card {
   max-width: 28rem;
 }

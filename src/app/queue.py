@@ -11,7 +11,7 @@ from yt_dlp.utils import DownloadError as YtDownloadError  # type: ignore[attr-d
 from .config import COOKIES_FILE, DOWNLOADS_DIR, get_cookie_browser_targets
 from .utils import _build_ydl_opts, _persist_cookies_from_browser, sanitize_filename
 
-QUEUE_ITEM_STATUSES = ("waiting", "downloading", "completed", "failed", "cancelled")
+QUEUE_ITEM_STATUSES = ("waiting", "downloading", "completed", "failed", "cancelled", "conflict")
 
 
 @dataclasses.dataclass
@@ -93,6 +93,26 @@ class DownloadQueueManager:
                     return True
         return False
 
+    def resolve_conflict(self, item_id: str, action: str) -> bool:
+        with self._lock:
+            for it in self.items:
+                if it.id == item_id and it.status == "conflict":
+                    if action == "overwrite":
+                        try:
+                            os.remove(it.output_path)
+                        except OSError:
+                            return False
+                        it.status = "waiting"
+                        it.progress = 0
+                    elif action == "skip":
+                        it.status = "completed"
+                        it.progress = 100
+                    else:
+                        return False
+        if action == "overwrite":
+            self._try_process()
+        return True
+
     def reorder(self, item_id: str, new_index: int) -> None:
         with self._lock:
             idx = next(i for i, it in enumerate(self.items) if it.id == item_id)
@@ -144,8 +164,8 @@ class DownloadQueueManager:
 
             if os.path.exists(item.output_path):
                 with self._lock:
-                    item.status = "completed"
-                    item.progress = 100
+                    item.status = "conflict"
+                    item.progress = 0
                 return
 
             ydl_opts = _build_ydl_opts(item.output_path, item.fmt, item.quality, include_thumbnail=item.include_thumbnail)

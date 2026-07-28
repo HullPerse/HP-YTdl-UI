@@ -1,3 +1,4 @@
+import http.client
 import http.cookiejar
 import json
 import os
@@ -6,17 +7,10 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
-from typing import Any
 
-import yt_dlp  # type: ignore[import-untyped]
-from yt_dlp.utils import DownloadError as YtDownloadError  # type: ignore[attr-defined]
-
-try:
-    from yt_dlp.cookies import (
-        extract_cookies_from_browser,  # type: ignore[attr-defined]
-    )
-except Exception:  # noqa: BLE001
-    extract_cookies_from_browser = None  # type: ignore[assignment]
+import yt_dlp
+from yt_dlp.cookies import extract_cookies_from_browser
+from yt_dlp.utils import DownloadError as YtDownloadError
 
 from .config import (
     COOKIES_FILE,
@@ -26,10 +20,19 @@ from .config import (
     download_progress,
     get_cookie_browser_targets,
 )
-
-
-class DownloadError(Exception):
-    pass
+from .types import (
+    CookieDetectResult,
+    DownloadError,
+    MetadataResult,
+    ParsedTitle,
+    PlaylistImportResult,
+    PlaylistInfo,
+    ProgressData,
+    SearchResult,
+    YdlOpts,
+    YtdlpUpdateResult,
+    YtdlpVersionResult,
+)
 
 
 def sanitize_filename(name: str) -> str:
@@ -40,7 +43,7 @@ def sanitize_filename(name: str) -> str:
     return name[:120]
 
 
-def parse_youtube_title(raw_title: str) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
+def parse_youtube_title(raw_title: str) -> ParsedTitle:
     title = raw_title.strip()
 
     title = re.sub(r'\s*\(official\s*(?:music\s*)?video\)\s*', ' ', title, flags=re.IGNORECASE)
@@ -56,17 +59,17 @@ def parse_youtube_title(raw_title: str) -> dict[str, Any]:  # pyright: ignore[re
     title = re.sub(r'\s+_\s+.*$', '', title)
     title = re.sub(r'\s*-\s*youtube\s*$', '', title, flags=re.IGNORECASE)
 
-    misc_parts = []
+    misc_parts: list[str] = []
     def _collect_misc(m: re.Match[str]) -> str:
         content = m.group(1).strip()
         if content and not re.match(r'^(official|video|audio|lyric|visualizer|4k|hd)\b', content, re.IGNORECASE):
-            misc_parts.append(content)  # pyright: ignore[reportUnknownMemberType]
+            misc_parts.append(content)
         return ''
     title = re.sub(r'\(([^)]*)\)', _collect_misc, title)
 
     title = re.sub(r'\s+', ' ', title).strip()
 
-    misc_str = f" [{', '.join(misc_parts)}]" if misc_parts else ''  # pyright: ignore[reportUnknownArgumentType]
+    misc_str = f" [{', '.join(misc_parts)}]" if misc_parts else ''
 
     artist = ''
     track = title
@@ -80,7 +83,7 @@ def parse_youtube_title(raw_title: str) -> dict[str, Any]:  # pyright: ignore[re
     return {
         'artist': artist,
         'title': track,
-        'misc': ', '.join(misc_parts),  # pyright: ignore[reportUnknownArgumentType]
+        'misc': ', '.join(misc_parts),
         'filename': sanitize_filename(filename),
         'source_title': raw_title,
     }
@@ -92,23 +95,23 @@ def clean_track_line(line: str) -> str:
     return line
 
 
-def get_playlists() -> list[dict[str, Any]]:  # pyright: ignore[reportExplicitAny]
-    playlists = []
+def get_playlists() -> list[PlaylistInfo]:
+    playlists: list[PlaylistInfo] = []
     for playlist_file in sorted(PLAYLISTS_DIR.glob("*")):
         if playlist_file.suffix.lower() not in (".csv", ".txt"):
             continue
         playlist_name = playlist_file.stem
         with open(playlist_file, encoding="utf-8-sig") as f:
             tracks = [clean_track_line(line) for line in f if line.strip()]
-        playlists.append({  # pyright: ignore[reportUnknownMemberType]
+        playlists.append({
             "name": playlist_name,
             "tracks": tracks,
             "count": len(tracks),
         })
-    return playlists  # pyright: ignore[reportUnknownVariableType]
+    return playlists
 
 
-def search_youtube_sync(query: str, max_results: int = 8) -> list[dict[str, Any]]:  # pyright: ignore[reportExplicitAny]
+def search_youtube_sync(query: str, max_results: int = 8) -> list[SearchResult]:
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
@@ -118,19 +121,20 @@ def search_youtube_sync(query: str, max_results: int = 8) -> list[dict[str, Any]
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:  # pyright: ignore[reportArgumentType]
         result = ydl.extract_info(search_query, download=False)
         entries = result.get("entries", []) if result else []
-        results = []
+        results: list[SearchResult] = []
         for e in entries:
             if not e or not e.get("id"):
                 continue
-            results.append({  # pyright: ignore[reportUnknownMemberType]
-                "id": e["id"],
-                "title": e.get("title", "Unknown"),
-                "channel": e.get("channel", e.get("uploader", "Unknown")),
+            video_id = str(e.get("id", ""))
+            results.append({
+                "id": video_id,
+                "title": str(e.get("title", "Unknown")),
+                "channel": str(e.get("channel", e.get("uploader", "Unknown"))),
                 "duration": e.get("duration"),
-                "thumbnail": f"https://img.youtube.com/vi/{e['id']}/hqdefault.jpg",
-                "url": f"https://www.youtube.com/watch?v={e['id']}",
+                "thumbnail": f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg",
+                "url": f"https://www.youtube.com/watch?v={video_id}",
             })
-        return results  # pyright: ignore[reportUnknownVariableType]
+        return results
 
 
 def _url_hash(url: str) -> str:
@@ -143,22 +147,22 @@ def _url_hash(url: str) -> str:
     return format(abs(h), 'x')
 
 
-def _progress_hook(d: dict[str, Any]) -> None:  # pyright: ignore[reportExplicitAny]
-    ident = d.get("info_dict", {})  # pyright: ignore[reportAny]
-    url = ident.get("webpage_url", "") or ident.get("url", "")  # pyright: ignore[reportAny]
-    url_hash = _url_hash(url)  # pyright: ignore[reportAny]
+def _progress_hook(d: ProgressData) -> None:
+    ident = d.get("info_dict", {})
+    url: str = str(ident.get("webpage_url", "") or ident.get("url", "")) if isinstance(ident, dict) else ""
+    url_hash = _url_hash(url)
     download_progress[url_hash] = {
         "status": d.get("status"),
         "downloaded_bytes": d.get("downloaded_bytes", 0),
         "total_bytes": d.get("total_bytes") or d.get("total_bytes_estimate", 0),
         "speed": d.get("speed", 0),
         "eta": d.get("eta", 0),
-        "percent": d.get("_percent_str", "").strip(),  # pyright: ignore[reportAny]
+        "percent": str(d.get("_percent_str", "")).strip(),
     }
 
 
-def _build_ydl_opts(output_path: str, fmt: str, quality: str = "720", include_thumbnail: bool = False) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
-    opts: dict[str, Any] = {  # pyright: ignore[reportExplicitAny]
+def _build_ydl_opts(output_path: str, fmt: str, quality: str = "720", include_thumbnail: bool = False) -> YdlOpts:
+    opts: YdlOpts = {
         "quiet": True,
         "no_warnings": True,
         "js_runtimes": {"node": {}},
@@ -195,7 +199,7 @@ def _build_ydl_opts(output_path: str, fmt: str, quality: str = "720", include_th
     return opts
 
 
-def _try_cookiesfrombrowser(ydl_opts: dict[str, Any], url: str) -> bool:  # pyright: ignore[reportExplicitAny]
+def _try_cookiesfrombrowser(ydl_opts: YdlOpts, url: str) -> bool:
     for browser_name, profile in get_cookie_browser_targets():
         try:
             cookie_opts = {k: v for k, v in ydl_opts.items() if k != "cookiefile"}
@@ -242,7 +246,7 @@ def download_sync(url: str, output_path: str, fmt: str, quality: str = "720", in
         raise DownloadError(str(e))
 
 
-def _add_cookies_to_opts(ydl_opts: dict[str, Any]) -> None:  # pyright: ignore[reportExplicitAny]
+def _add_cookies_to_opts(ydl_opts: YdlOpts) -> None:
     if COOKIES_FILE.exists():
         ydl_opts["cookiefile"] = str(COOKIES_FILE)
     else:
@@ -259,7 +263,7 @@ def _add_cookies_to_opts(ydl_opts: dict[str, Any]) -> None:  # pyright: ignore[r
 
 def get_video_stream_url_sync(video_id: str, quality: str = "360") -> str:
     url = f"https://www.youtube.com/watch?v={video_id}"
-    ydl_opts: dict[str, Any] = {
+    ydl_opts: YdlOpts = {
         "quiet": True,
         "no_warnings": True,
         "format": f"best[height<={quality}]/best",
@@ -270,8 +274,8 @@ def get_video_stream_url_sync(video_id: str, quality: str = "360") -> str:
     return str(info.get("url", ""))
 
 
-def get_video_metadata_sync(url: str) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
-    ydl_opts: dict[str, Any] = {  # pyright: ignore[reportExplicitAny]
+def get_video_metadata_sync(url: str) -> MetadataResult:
+    ydl_opts: YdlOpts = {
         "quiet": True,
         "no_warnings": True,
         "js_runtimes": {"node": {}},
@@ -281,13 +285,16 @@ def get_video_metadata_sync(url: str) -> dict[str, Any]:  # pyright: ignore[repo
     _add_cookies_to_opts(ydl_opts)
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:  # pyright: ignore[reportArgumentType]
         info = ydl.extract_info(url, download=False)
-    raw_title = info.get("title") or ""
+    raw_title: str = str(info.get("title") or "")
     parsed = parse_youtube_title(raw_title)
-    parsed["duration"] = info.get("duration")
-    parsed["channel"] = info.get("channel", info.get("uploader", ""))
-    parsed["id"] = info.get("id")
-    parsed["thumbnail"] = f"https://img.youtube.com/vi/{info.get('id','')}/hqdefault.jpg"
-    return parsed
+    info_id: str = str(info.get("id") or "")
+    return {
+        **parsed,
+        "duration": info.get("duration"),
+        "channel": str(info.get("channel", info.get("uploader", ""))),
+        "id": info_id,
+        "thumbnail": f"https://img.youtube.com/vi/{info_id}/hqdefault.jpg",
+    }
 
 
 def _cookiejar_to_netscape(cj: http.cookiejar.CookieJar) -> str:
@@ -339,7 +346,7 @@ def _count_auth_cookies(jar: http.cookiejar.CookieJar) -> int:
     return sum(1 for c in jar if c.name in AUTH_COOKIE_NAMES and c.value)
 
 
-def auto_detect_cookies_sync() -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
+def auto_detect_cookies_sync() -> CookieDetectResult:
     result_info: dict[str, str] = {}
     if extract_cookies_from_browser is None:
         return {
@@ -387,7 +394,7 @@ def auto_detect_cookies_sync() -> dict[str, Any]:  # pyright: ignore[reportExpli
             best_total = len(jar)
 
     if best_jar is None:
-        detail = "; ".join(f"{k}: {v}" for k, v in result_info.items())  # pyright: ignore[reportUnknownVariableType]
+        detail = "; ".join(f"{k}: {v}" for k, v in result_info.items())
         return {"found": False, "total": 0, "detail": detail or "no supported browsers found", "per_browser": result_info}
 
     try:
@@ -417,7 +424,7 @@ def auto_detect_cookies_sync() -> dict[str, Any]:  # pyright: ignore[reportExpli
     }
 
 
-def import_playlist_sync(url: str, name: str) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
+def import_playlist_sync(url: str, name: str) -> PlaylistImportResult:
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
@@ -425,19 +432,27 @@ def import_playlist_sync(url: str, name: str) -> dict[str, Any]:  # pyright: ign
         "ignoreerrors": True,
     }
     _add_cookies_to_opts(ydl_opts)
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:  # pyright: ignore[reportArgumentType]
-        info = ydl.extract_info(url, download=False)
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:  # pyright: ignore[reportArgumentType]
+            info = ydl.extract_info(url, download=False)
+    except YtDownloadError as e:
+        detail = str(e)
+        if "[DRM]" in detail:
+            detail = "This URL is not supported. Only YouTube playlists work with this feature."
+        raise DownloadError(detail)
+    if not info:
+        raise DownloadError("This URL is not supported. Only YouTube playlists work with this feature.")
     entries = info.get("entries") or []
-    tracks = []
+    tracks: list[str] = []
     for e in entries:
         if e and e.get("title"):
-            tracks.append(e.get("title", ""))  # pyright: ignore[reportUnknownMemberType]
+            tracks.append(str(e.get("title", "")))
     playlist_path = PLAYLISTS_DIR / f"{sanitize_filename(name)}.csv"
-    _ = playlist_path.write_text("\n".join(tracks), encoding="utf-8")  # pyright: ignore[reportUnknownArgumentType]
-    return {"name": name, "count": len(tracks), "path": str(playlist_path)}  # pyright: ignore[reportUnknownArgumentType]
+    _ = playlist_path.write_text("\n".join(tracks), encoding="utf-8")
+    return {"name": name, "count": len(tracks), "path": str(playlist_path)}
 
 
-def import_playlist_from_url_sync(url: str) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
+def import_playlist_from_url_sync(url: str) -> PlaylistImportResult:
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
@@ -445,27 +460,36 @@ def import_playlist_from_url_sync(url: str) -> dict[str, Any]:  # pyright: ignor
         "ignoreerrors": True,
     }
     _add_cookies_to_opts(ydl_opts)
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:  # pyright: ignore[reportArgumentType]
-        info = ydl.extract_info(url, download=False)
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:  # pyright: ignore[reportArgumentType]
+            info = ydl.extract_info(url, download=False)
+    except YtDownloadError as e:
+        detail = str(e)
+        if "[DRM]" in detail:
+            detail = "This URL is not supported. Only YouTube playlists work with this feature."
+        raise DownloadError(detail)
+    if not info:
+        raise DownloadError("This URL is not supported. Only YouTube playlists work with this feature.")
     name = str(info.get("title", "Untitled Playlist") or "Untitled Playlist")
     entries = info.get("entries") or []
-    tracks = []
+    tracks: list[str] = []
     for e in entries:
         if e and e.get("title"):
-            tracks.append(e.get("title", ""))  # pyright: ignore[reportUnknownMemberType]
+            tracks.append(str(e.get("title", "")))
     playlist_path = PLAYLISTS_DIR / f"{sanitize_filename(name)}.csv"
-    _ = playlist_path.write_text("\n".join(tracks), encoding="utf-8")  # pyright: ignore[reportUnknownArgumentType]
-    return {"name": name, "count": len(tracks), "path": str(playlist_path)}  # pyright: ignore[reportUnknownArgumentType]
+    _ = playlist_path.write_text("\n".join(tracks), encoding="utf-8")
+    return {"name": name, "count": len(tracks), "path": str(playlist_path)}
+
+
 
 
 def _get_installed_ytdlp_version() -> str:
-    ver = getattr(yt_dlp.version, "__version__", "") or ""  # pyright: ignore[reportAttributeAccessIssue]
+    _ver_mod = getattr(yt_dlp, "version", None)
+    ver = str(getattr(_ver_mod, "__version__", "") or "") if _ver_mod else ""
     if ver:
         return ver
     try:
-        from importlib.metadata import (
-            version as _dist_version,  # type: ignore[import-not-found]
-        )
+        from importlib.metadata import version as _dist_version
         return _dist_version("yt-dlp")
     except Exception:  # noqa: BLE001
         return ""
@@ -477,7 +501,9 @@ def _fetch_latest_pypi_version_sync() -> str:
             "https://pypi.org/pypi/yt-dlp/json",
             headers={"User-Agent": "hp-ytdl-ui/1.0"},
         )
-        with urllib.request.urlopen(req, timeout=10) as resp:  # pyright: ignore[reportUnknownMemberType]
+        _response = urllib.request.urlopen(req, timeout=10)
+        with _response:
+            resp: http.client.HTTPResponse = _response
             data = json.loads(resp.read().decode("utf-8"))
         ver = data.get("info", {}).get("version", "")
         return str(ver) if ver else ""
@@ -490,7 +516,7 @@ def _normalize_version(ver: str) -> str:
     return ".".join(p.lstrip("0") or "0" for p in parts)
 
 
-def _run_ytdlp_version_sync() -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
+def _run_ytdlp_version_sync() -> YtdlpVersionResult:
     current = _get_installed_ytdlp_version()
     latest = _fetch_latest_pypi_version_sync()
     cur_norm = _normalize_version(current) if current else ""
@@ -504,7 +530,7 @@ def _run_ytdlp_version_sync() -> dict[str, Any]:  # pyright: ignore[reportExplic
     }
 
 
-def _run_ytdlp_update_sync() -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
+def _run_ytdlp_update_sync() -> YtdlpUpdateResult:
     if getattr(sys, "frozen", False):
         return {
             "updated": False,

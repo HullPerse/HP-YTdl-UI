@@ -109,7 +109,7 @@
       </div>
 
       <div id="settings-panel" class="settings-panel" style="display: none">
-        <div class="preview-card" style="max-height: 90vh; overflow-y: auto;">
+        <div class="preview-card" style="max-height: 90vh; overflow-y: auto">
           <div class="preview-header">
             <span>&#9881; Settings</span>
             <button id="btn-settings-close" class="btn-close">&times;</button>
@@ -120,7 +120,9 @@
                 General
               </button>
               <button class="settings-tab" data-stab="cookies">Cookies</button>
-              <button class="settings-tab" data-stab="downloads">Downloads</button>
+              <button class="settings-tab" data-stab="downloads">
+                Downloads
+              </button>
               <button class="settings-tab" data-stab="updates">Updates</button>
             </div>
 
@@ -223,12 +225,13 @@
                 </p>
                 <ul class="help-list">
                   <li>
-                    <strong>Extension</strong> — Install "cookies.txt" (Chrome/Edge)
-                    or "cookies.txt" (Firefox), visit YouTube, click the extension
-                    icon, and export.
+                    <strong>Extension</strong> — Install "cookies.txt"
+                    (Chrome/Edge) or "cookies.txt" (Firefox), visit YouTube,
+                    click the extension icon, and export.
                   </li>
                   <li>
-                    <strong>yt-dlp command</strong> — Close your browser, then run:
+                    <strong>yt-dlp command</strong> — Close your browser, then
+                    run:
                     <code
                       >yt-dlp --cookies-from-browser BROWSER --cookies
                       cookies.txt</code
@@ -245,7 +248,10 @@
                   <button id="btn-cookies-save" class="btn-primary">
                     Save Cookies
                   </button>
-                  <button id="btn-cookies-delete" class="btn-secondary btn-danger">
+                  <button
+                    id="btn-cookies-delete"
+                    class="btn-secondary btn-danger"
+                  >
                     Delete Cookies
                   </button>
                 </div>
@@ -261,7 +267,9 @@
                   <select id="rename-playlist-select">
                     <option value="">-- Select playlist --</option>
                   </select>
-                  <button id="btn-rename-files" class="btn-primary">Rename</button>
+                  <button id="btn-rename-files" class="btn-primary">
+                    Rename
+                  </button>
                 </div>
                 <div id="rename-result" class="cookies-status"></div>
               </div>
@@ -377,9 +385,16 @@
           <div class="preview-body">
             <p id="conflict-modal-text" class="help-text"></p>
             <div class="input-row" style="justify-content: flex-end">
-              <button id="btn-conflict-overwrite" class="btn-danger btn-primary">Overwrite</button>
+              <button
+                id="btn-conflict-overwrite"
+                class="btn-danger btn-primary"
+              >
+                Overwrite
+              </button>
               <button id="btn-conflict-skip" class="btn-primary">Skip</button>
-              <button id="btn-conflict-cancel" class="btn-secondary">Cancel</button>
+              <button id="btn-conflict-cancel" class="btn-secondary">
+                Cancel
+              </button>
             </div>
           </div>
         </div>

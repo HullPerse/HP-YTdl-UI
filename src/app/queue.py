@@ -3,12 +3,13 @@ import os
 import threading
 import uuid
 from pathlib import Path
-from typing import Any
 
-import yt_dlp  # type: ignore[import-untyped]
-from yt_dlp.utils import DownloadError as YtDownloadError  # type: ignore[attr-defined]
+import yt_dlp
+from fastapi.exceptions import HTTPException
+from yt_dlp.utils import DownloadError as YtDownloadError
 
 from .config import COOKIES_FILE, DOWNLOADS_DIR, get_cookie_browser_targets
+from .types import ProgressData, StateData, YdlOpts
 from .utils import _build_ydl_opts, _persist_cookies_from_browser, sanitize_filename
 
 QUEUE_ITEM_STATUSES = ("waiting", "downloading", "completed", "failed", "cancelled", "conflict")
@@ -41,7 +42,7 @@ class DownloadQueueManager:
         self._max_concurrent: int = max_concurrent
         self._active_count: int = 0
 
-    def _add_cookies(self, ydl_opts: dict[str, Any]) -> None:  # pyright: ignore[reportExplicitAny]
+    def _add_cookies(self, ydl_opts: YdlOpts) -> None:
         if COOKIES_FILE.exists():
             ydl_opts["cookiefile"] = str(COOKIES_FILE)
         else:
@@ -52,8 +53,8 @@ class DownloadQueueManager:
                     else:
                         ydl_opts["cookiesfrombrowser"] = (browser_name,)
                     return
-                except Exception:  # noqa: BLE001,S112
-                    continue
+                except Exception as e:
+                  raise HTTPException(status_code=400, detail="Cookie error") from e
 
     def add(self, url: str, filename: str, fmt: str, quality: str, playlist: str, output_dir: str, include_thumbnail: bool = False) -> QueueItem:
         item = QueueItem(
@@ -128,7 +129,7 @@ class DownloadQueueManager:
         with self._lock:
             self._max_concurrent = max(0, n)
 
-    def get_state(self) -> list[dict[str, Any]]:  # pyright: ignore[reportExplicitAny]
+    def get_state(self) -> list[StateData]:
         with self._lock:
             return [dataclasses.asdict(it) for it in self.items]
 
@@ -145,7 +146,7 @@ class DownloadQueueManager:
                 t.start()
 
     def _download_worker(self, item: QueueItem) -> None:
-        ydl_opts: dict[str, Any] = {}  # pyright: ignore[reportExplicitAny]
+        ydl_opts: YdlOpts = {}
         try:
             safe_name = sanitize_filename(item.filename)
             ext = item.fmt
@@ -170,7 +171,7 @@ class DownloadQueueManager:
 
             ydl_opts = _build_ydl_opts(item.output_path, item.fmt, item.quality, include_thumbnail=item.include_thumbnail)
 
-            def hook(d: dict[str, Any]) -> None:  # pyright: ignore[reportExplicitAny]
+            def hook(d: ProgressData) -> None:
                 with self._lock:
                     if item.status == "cancelled":
                         raise YtDownloadError("Skipped")

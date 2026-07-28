@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import threading
+from typing import cast
 
 from fastapi import HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
@@ -36,8 +37,8 @@ from .utils import (
 
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})  # pyright: ignore[reportUnknownMemberType]
+async def index(request: Request) -> HTMLResponse:
+    return cast(HTMLResponse, templates.TemplateResponse("index.html", {"request": request}))
 
 
 @app.get("/api/playlists")
@@ -115,7 +116,7 @@ async def api_download(req: DownloadRequest):
 
 
 @app.post("/api/rename/playlist/{name}")
-async def rename_playlist_files(name: str):  # pyright: ignore[reportUnknownParameterType]
+async def rename_playlist_files(name: str):
     playlist_dir = DOWNLOADS_DIR / name
     if not playlist_dir.exists():
         raise HTTPException(status_code=404, detail="Playlist download directory not found")
@@ -126,24 +127,25 @@ async def rename_playlist_files(name: str):  # pyright: ignore[reportUnknownPara
 
     files = list(playlist_dir.glob("*"))
     files.sort(key=lambda f: f.name.lower())
-    renamed = []
-    errors = []
+    renamed: list[dict[str, str]] = []
+    errors: list[str] = []
     for i, f in enumerate(files):
         if not f.is_file():
             continue
-        if i >= len(pl["tracks"]):  # pyright: ignore[reportAny]
-            errors.append(f"{f.name}: no playlist track at index {i}")  # pyright: ignore[reportUnknownMemberType]
+        tracks = pl["tracks"]
+        if i >= len(tracks):
+            errors.append(f"{f.name}: no playlist track at index {i}")
             continue
-        track = pl["tracks"][i]  # pyright: ignore[reportAny]
-        parsed = parse_youtube_title(track)  # pyright: ignore[reportAny]
-        new_name = parsed["filename"] + f.suffix  # pyright: ignore[reportAny]
-        new_path = f.parent / new_name  # pyright: ignore[reportAny]
-        if new_path.exists():  # pyright: ignore[reportAny]
-            errors.append(f"{f.name}: target {new_name} already exists")  # pyright: ignore[reportUnknownMemberType]
+        track: str = tracks[i]
+        parsed = parse_youtube_title(track)
+        new_name = parsed["filename"] + f.suffix
+        new_path = f.parent / new_name
+        if new_path.exists():
+            errors.append(f"{f.name}: target {new_name} already exists")
             continue
-        os.rename(f, new_path)  # pyright: ignore[reportAny]
-        renamed.append({"old": f.name, "new": new_name})  # pyright: ignore[reportUnknownMemberType]
-    return {"renamed": renamed, "errors": errors, "total": len(files)}  # pyright: ignore[reportUnknownVariableType]
+        os.rename(f, new_path)
+        renamed.append({"old": f.name, "new": new_name})
+    return {"renamed": renamed, "errors": errors, "total": len(files)}
 
 
 @app.get("/api/download/{filename:path}")
@@ -294,6 +296,9 @@ async def api_import_playlist_from_url(req: PlaylistImportRequest):
     return result
 
 
+
+
+
 @app.post("/api/playlists/check-existing")
 async def api_check_existing(req: PlaylistCheckRequest):
     existing = []
@@ -352,7 +357,7 @@ class CookiesBody(BaseModel):
 
 @app.post("/api/cookies")
 async def save_cookies(body: CookiesBody):
-    COOKIES_FILE.write_text(body.content, encoding="utf-8")  # pyright: ignore[reportUnusedCallResult]
+    _ = COOKIES_FILE.write_text(body.content, encoding="utf-8")
     return {"saved": True, "path": str(COOKIES_FILE)}
 
 
@@ -371,31 +376,31 @@ async def detect_cookies():
 
 
 @app.get("/api/cookies/inspect")
-async def inspect_cookies():  # pyright: ignore[reportUnknownParameterType]
+async def inspect_cookies():
     if not COOKIES_FILE.exists():
         return {"exists": False}
     content = COOKIES_FILE.read_text(encoding="utf-8")
     lines = [l.strip() for l in content.splitlines() if l.strip() and not l.strip().startswith("#") and "\t" in l]
-    auth_cookies = []
-    domains = set()  # pyright: ignore[reportUnknownVariableType]
+    auth_cookies_list: list[dict[str, str | bool]] = []
+    domains: set[str] = set()
     auth_names = {"SAPISID", "SSID", "HSID", "SID", "LOGIN_INFO", "__Secure-1PSID", "__Secure-3PSID"}
     for line in lines:
         parts = line.split("\t")
         if len(parts) >= 7:
             domain = parts[0].removeprefix(".")
             name = parts[5]
-            domains.add(domain)  # pyright: ignore[reportUnknownMemberType]
-            auth_cookies.append({  # pyright: ignore[reportUnknownMemberType]
+            domains.add(domain)
+            auth_cookies_list.append({
                 "name": name,
                 "domain": domain,
                 "is_auth": name in auth_names,
             })
-    total = len(auth_cookies)  # pyright: ignore[reportUnknownArgumentType]
-    auth_present = [c["name"] for c in auth_cookies if c["is_auth"]]  # pyright: ignore[reportUnknownVariableType]
-    return {  # pyright: ignore[reportUnknownVariableType]
+    total = len(auth_cookies_list)
+    auth_present = [c["name"] for c in auth_cookies_list if c["is_auth"]]
+    return {
         "exists": True,
         "total_cookies": total,
-        "domains": sorted(domains),  # pyright: ignore[reportUnknownArgumentType]
+        "domains": sorted(domains),
         "auth_cookies_present": auth_present,
         "has_all_auth": all(n in auth_present for n in ["SAPISID", "SSID", "HSID", "SID"]),
     }
@@ -414,6 +419,11 @@ async def signin_to_youtube():
 @app.get("/api/cookies/signin/status")
 async def signin_status():
     return get_signin_status()
+
+
+
+
+
 
 
 _playlist_sig: str = ""
@@ -451,10 +461,10 @@ async def playlist_events():
 
 
 @app.get("/api/downloads")
-async def list_downloads():  # pyright: ignore[reportUnknownParameterType]
-    files = []
+async def list_downloads():
+    files_list: list[dict[str, str | int]] = []
     for path in sorted(DOWNLOADS_DIR.rglob("*")):
         if path.is_file() and path.suffix.lower() in (".mp3", ".mp4", ".m4a", ".webm"):
             rel = path.relative_to(DOWNLOADS_DIR)
-            files.append({"name": str(rel), "size": path.stat().st_size})  # pyright: ignore[reportUnknownMemberType]
-    return {"files": files}  # pyright: ignore[reportUnknownVariableType]
+            files_list.append({"name": str(rel), "size": path.stat().st_size})
+    return {"files": files_list}

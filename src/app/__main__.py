@@ -1,12 +1,11 @@
 import argparse
-import ctypes
+import logging
 import shutil
 import subprocess
 import sys
-import threading
-import time
+import webbrowser
 
-from .config import APP_TITLE, BUNDLE_DIR, FRONTEND_DIR
+from .config import BUNDLE_DIR, FRONTEND_DIR
 
 
 def _build_ts():
@@ -19,18 +18,16 @@ def _build_ts():
 
 def main():
     parser = argparse.ArgumentParser()
-    _ = parser.add_argument("--app", action="store_true", help="Open in native window")
     _ = parser.add_argument("--build", action="store_true", help="Build standalone .exe with PyInstaller")
     args = parser.parse_args()
 
     ICON_PATH = BUNDLE_DIR / "src" / "assets" / "icon.ico"
 
-
-    if args.build:  # pyright: ignore[reportAny]
+    if args.build:
         _build_ts()
         build_cmd = [
             sys.executable, "-m", "PyInstaller",
-            "--onefile", "--noconsole",
+            "--onefile", "--console",
             "--name", "hp-ytdl-ui",
             "--add-data", f"{FRONTEND_DIR};src/frontend",
             "--hidden-import", "uvicorn.logging",
@@ -55,45 +52,22 @@ def main():
 
     if not getattr(sys, 'frozen', False):
         _build_ts()
-
-    dev_mode = not getattr(sys, 'frozen', False) and not args.app
-    if dev_mode:
         _ = subprocess.Popen(
             ["npx", "esbuild", "index.ts", "--bundle",
              "--outfile=index.min.js", "--target=es2020", "--watch"],
             cwd=str(FRONTEND_DIR), shell=True,
         )
 
-    if getattr(sys, 'frozen', False) or args.app:  # pyright: ignore[reportAny]
-        from .config import set_app_mode
-        set_app_mode("desktop")
-        import webview  # type: ignore[import-untyped]
+    import uvicorn
 
-        def _start_server():
-            import uvicorn
-            uvicorn.run("app:app", host="127.0.0.1", port=8000, log_level="info")  # pyright: ignore[reportUnknownMemberType]
-
-        t = threading.Thread(target=_start_server, daemon=True)
-        t.start()
-        time.sleep(1.5)
-        _ = webview.create_window(APP_TITLE, "http://127.0.0.1:8000")  # pyright: ignore[reportUnknownMemberType]
-
-        try:
-
-          item = ctypes.windll.user32.FindWindowW(None, APP_TITLE)  # pyright: ignore[reportAny]
-
-          if item:
-            ctypes.windll.user32.SetWindowTextW(item, APP_TITLE)
-
-          ctypes.windll.kernel32.SetConsoleTitleW(APP_TITLE)
-
-        except:  # noqa: E722, S110
-          pass
-
-        webview.start()
+    if getattr(sys, 'frozen', False):
+        logging.getLogger("uvicorn").setLevel(logging.WARNING)
+        logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+        print("Server starting at http://127.0.0.1:8000", flush=True)
+        webbrowser.open("http://127.0.0.1:8000")
+        uvicorn.run("app:app", host="127.0.0.1", port=8000, log_level="warning")
     else:
-        import uvicorn
-        uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=True)  # pyright: ignore[reportUnknownMemberType]
+        uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=True)
 
 
 if __name__ == "__main__":

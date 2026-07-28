@@ -1,11 +1,12 @@
+import json
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any
 
 APP_VERSION = "1.0.0"
 
-BUNDLE_DIR = Path(sys._MEIPASS) if getattr(sys, 'frozen', False) else Path(__file__).parent.parent.parent  # type: ignore[attr-defined]  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType, reportAttributeAccessIssue]
+_meipass = getattr(sys, '_MEIPASS', None)
+BUNDLE_DIR = Path(_meipass) if _meipass else Path(__file__).parent.parent.parent
 APP_DIR = Path(sys.executable).parent if getattr(sys, 'frozen', False) else BUNDLE_DIR
 
 FRONTEND_DIR = BUNDLE_DIR / "src" / "frontend"
@@ -51,12 +52,21 @@ def get_cookie_browser_targets() -> list[tuple[str, str | None]]:
     return targets
 
 APP_TITLE = "HP YTdl UI"
-APP_MODE = "web"
+
+download_progress: dict[str, dict[str, object]] = {}
+
+CONFIG_FILE = DATA_DIR / "config.json"
 
 
-def set_app_mode(mode: str) -> None:
-    global APP_MODE
-    APP_MODE = mode
+def _load_config() -> dict[str, str]:
+    if CONFIG_FILE.exists():
+        try:
+            return json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return {}
+    return {}
 
 
-download_progress: dict[str, dict[str, Any]] = {}  # pyright: ignore[reportExplicitAny]
+def _save_config(data: dict[str, str]) -> None:
+    CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    CONFIG_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")

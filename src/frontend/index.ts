@@ -244,10 +244,22 @@ function showConflictModal(text: string): Promise<"overwrite" | "skip" | null> {
       $btn("btn-conflict-cancel").onclick = null;
       $btn("btn-conflict-close").onclick = null;
     };
-    $btn("btn-conflict-skip").onclick = () => { cleanup(); resolve("skip"); };
-    $btn("btn-conflict-overwrite").onclick = () => { cleanup(); resolve("overwrite"); };
-    $btn("btn-conflict-cancel").onclick = () => { cleanup(); resolve(null); };
-    $btn("btn-conflict-close").onclick = () => { cleanup(); resolve(null); };
+    $btn("btn-conflict-skip").onclick = () => {
+      cleanup();
+      resolve("skip");
+    };
+    $btn("btn-conflict-overwrite").onclick = () => {
+      cleanup();
+      resolve("overwrite");
+    };
+    $btn("btn-conflict-cancel").onclick = () => {
+      cleanup();
+      resolve(null);
+    };
+    $btn("btn-conflict-close").onclick = () => {
+      cleanup();
+      resolve(null);
+    };
   });
 }
 
@@ -380,22 +392,39 @@ async function dlThumb(url: string, id: string): Promise<void> {
 }
 
 function stopPreviewVideo(): void {
-  const video = document.getElementById("preview-video") as HTMLVideoElement | null;
-  if (video) { video.pause(); video.style.display = "none"; video.removeAttribute("src"); }
-  const thumb = document.getElementById("preview-thumb") as HTMLImageElement | null;
+  const video = document.getElementById(
+    "preview-video",
+  ) as HTMLVideoElement | null;
+  if (video) {
+    video.pause();
+    video.style.display = "none";
+    video.removeAttribute("src");
+  }
+  const thumb = document.getElementById(
+    "preview-thumb",
+  ) as HTMLImageElement | null;
   if (thumb) thumb.style.display = "";
   const overlay = document.getElementById("preview-play-overlay");
   if (overlay) overlay.style.display = "flex";
 }
 
 async function playPreviewVideo(videoId: string): Promise<void> {
-  const thumb = document.getElementById("preview-thumb") as HTMLImageElement | null;
+  const thumb = document.getElementById(
+    "preview-thumb",
+  ) as HTMLImageElement | null;
   const overlay = document.getElementById("preview-play-overlay");
-  const video = document.getElementById("preview-video") as HTMLVideoElement | null;
+  const video = document.getElementById(
+    "preview-video",
+  ) as HTMLVideoElement | null;
   if (!video) return;
   try {
-    const res = await fetch("/api/stream/" + encodeURIComponent(videoId) + "?quality=360");
-    if (!res.ok) { showError("Failed to load video stream"); return; }
+    const res = await fetch(
+      "/api/stream/" + encodeURIComponent(videoId) + "?quality=360",
+    );
+    if (!res.ok) {
+      showError("Failed to load video stream");
+      return;
+    }
     const data: { url: string } = await res.json();
     if (thumb) thumb.style.display = "none";
     if (overlay) overlay.style.display = "none";
@@ -417,7 +446,9 @@ function showPreview(
   cachedMetadataFields = null;
   dnldItemId = null;
   stopPreviewVideo();
-  const thumb = document.getElementById("preview-thumb") as HTMLImageElement | null;
+  const thumb = document.getElementById(
+    "preview-thumb",
+  ) as HTMLImageElement | null;
   if (thumb) thumb.src = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
   const ytLink = document.getElementById(
     "preview-yt-link",
@@ -429,7 +460,8 @@ function showPreview(
   const titleEl = $("preview-title");
   if (!titleEl) return;
   // Apply template immediately with raw title data (before metadata arrives)
-  const tpl = localStorage.getItem("filenameTemplate") || "{artist} - {title}{misc}";
+  const tpl =
+    localStorage.getItem("filenameTemplate") || "{artist} - {title}{misc}";
   const sepIdx = title.indexOf(" - ");
   const fields = {
     artist: sepIdx > 0 ? title.substring(0, sepIdx).trim() : "",
@@ -687,7 +719,9 @@ async function download(): Promise<void> {
   if (r) r.style.display = "none";
   try {
     const outputDir = localStorage.getItem("outputDir") || "";
-    const chkThumb = document.getElementById("chk-include-thumbnail") as HTMLInputElement | null;
+    const chkThumb = document.getElementById(
+      "chk-include-thumbnail",
+    ) as HTMLInputElement | null;
     const includeThumbnail = chkThumb ? chkThumb.checked : true;
     const res = await fetch("/api/queue/add", {
       method: "POST",
@@ -732,13 +766,16 @@ async function downloadAllPlaylist(): Promise<void> {
       if (data.results?.[0]) {
         const r = data.results[0];
         const outputDir = localStorage.getItem("outputDir") || "";
-        const tpl = localStorage.getItem("filenameTemplate") || "{artist} - {title}{misc}";
+        const tpl =
+          localStorage.getItem("filenameTemplate") ||
+          "{artist} - {title}{misc}";
         const rawTitle = r.title;
         const sepIdx = rawTitle.indexOf(" - ");
         const parsedFilename = applyFilenameTemplate(
           {
             artist: sepIdx > 0 ? rawTitle.substring(0, sepIdx).trim() : "",
-            title: sepIdx > 0 ? rawTitle.substring(sepIdx + 3).trim() : rawTitle,
+            title:
+              sepIdx > 0 ? rawTitle.substring(sepIdx + 3).trim() : rawTitle,
             misc: "",
             channel: "",
             id: r.id,
@@ -803,7 +840,10 @@ async function loadPlaylistSelect(nameToSelect?: string): Promise<void> {
       renameSel.appendChild(ropt);
     }
   });
-  if (nameToSelect && sel.querySelector(`option[value="${CSS.escape(nameToSelect)}"]`)) {
+  if (
+    nameToSelect &&
+    sel.querySelector(`option[value="${CSS.escape(nameToSelect)}"]`)
+  ) {
     sel.value = nameToSelect;
     sel.dispatchEvent(new Event("change"));
   }
@@ -845,7 +885,7 @@ $btn("btn-settings-toggle").addEventListener("click", () => {
     loadDownloads();
     loadYtdlpVersion();
   }
-clearAll();
+  clearAll();
 });
 
 SETTINGS_PANEL.addEventListener("click", (e) => {
@@ -917,9 +957,10 @@ $sel("playlist-select").addEventListener("change", async (e: Event) => {
   const playlists: PlaylistInfo[] = await res.json();
   const pl = playlists.find((p) => p.name === name);
   if (!pl) return;
-playlistTracks = pl.tracks;
+  playlistTracks = pl.tracks;
   playlistIndex = 0;
-  const tpl = localStorage.getItem("filenameTemplate") || "{artist} - {title}{misc}";
+  const tpl =
+    localStorage.getItem("filenameTemplate") || "{artist} - {title}{misc}";
   const checkRes = await fetch("/api/playlists/check-existing", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -928,7 +969,10 @@ playlistTracks = pl.tracks;
   const checkData = await checkRes.json();
   const existingIndices = new Set(checkData.existing as number[]);
   if (existingIndices.size > 0) {
-    while (playlistIndex < playlistTracks.length && existingIndices.has(playlistIndex)) {
+    while (
+      playlistIndex < playlistTracks.length &&
+      existingIndices.has(playlistIndex)
+    ) {
       playlistIndex++;
     }
   }
@@ -957,9 +1001,11 @@ $btn("btn-playlist-skip").addEventListener("click", () => {
   }
 });
 
-document.getElementById("preview-play-overlay")?.addEventListener("click", () => {
-  if (selectedVideo) playPreviewVideo(selectedVideo.id);
-});
+document
+  .getElementById("preview-play-overlay")
+  ?.addEventListener("click", () => {
+    if (selectedVideo) playPreviewVideo(selectedVideo.id);
+  });
 
 $btn("btn-preview-close").addEventListener("click", () => {
   PREVIEW.style.display = "none";
@@ -1007,7 +1053,10 @@ document.querySelectorAll(".help-text code").forEach((el) => {
   el.addEventListener("click", () => {
     const tag = el.textContent || "";
     const cursorPos = tplInput.selectionStart || tplInput.value.length;
-    tplInput.value = tplInput.value.slice(0, cursorPos) + tag + tplInput.value.slice(cursorPos);
+    tplInput.value =
+      tplInput.value.slice(0, cursorPos) +
+      tag +
+      tplInput.value.slice(cursorPos);
     tplInput.dispatchEvent(new Event("input"));
     tplInput.focus();
   });
@@ -1033,6 +1082,14 @@ $input("output-dir").addEventListener("input", (e: Event) => {
   localStorage.setItem("outputDir", (e.target as HTMLInputElement).value);
 });
 
+function _detectImportEndpoint(url: string): string | null {
+  if (/^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/playlist\?/.test(url)) {
+    return "/api/playlists/import";
+  }
+
+  return null;
+}
+
 $btn("btn-import-playlist").addEventListener("click", async () => {
   const url = $input("import-playlist-url").value.trim();
   const name = $input("import-playlist-name").value.trim();
@@ -1042,9 +1099,15 @@ $btn("btn-import-playlist").addEventListener("click", async () => {
       '<span class="cookies-missing">Enter URL and name</span>';
     return;
   }
+  const endpoint = _detectImportEndpoint(url);
+  if (!endpoint) {
+    resultEl.innerHTML =
+      '<span class="cookies-missing">Enter a valid YouTube playlist URL</span>';
+    return;
+  }
   resultEl.innerHTML = '<span class="cookies-missing">Importing...</span>';
   try {
-    const res = await fetch("/api/playlists/import", {
+    const res = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url, name }),
@@ -1069,17 +1132,21 @@ $btn("btn-import-from-url").addEventListener("click", async () => {
   try {
     const text = await navigator.clipboard.readText();
     const trimmed = text.trim();
-    if (
-      !trimmed ||
-      !/^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/playlist\?/.test(trimmed)
-    ) {
+    if (!trimmed) {
+      resultEl.innerHTML =
+        '<span class="cookies-missing">Clipboard is empty</span>';
+      return;
+    }
+    const endpoint = _detectImportEndpoint(trimmed);
+    if (!endpoint) {
       resultEl.innerHTML =
         '<span class="cookies-missing">Clipboard does not contain a YouTube playlist URL</span>';
       return;
     }
     urlInput.value = trimmed;
-    resultEl.innerHTML = '<span class="cookies-missing">Fetching playlist name from YouTube...</span>';
-    const res = await fetch("/api/playlists/import-from-url", {
+    resultEl.innerHTML =
+      '<span class="cookies-missing">Importing playlist...</span>';
+    const res = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url: trimmed, name: "" }),
@@ -1093,9 +1160,11 @@ $btn("btn-import-from-url").addEventListener("click", async () => {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("read")) {
-      resultEl.innerHTML = '<span class="cookies-missing">Cannot read clipboard. Paste the URL manually and click Import.</span>';
+      resultEl.innerHTML =
+        '<span class="cookies-missing">Cannot read clipboard. Paste the URL manually and click Import.</span>';
     } else {
-      resultEl.innerHTML = '<span class="cookies-missing">Error: ' + msg + "</span>";
+      resultEl.innerHTML =
+        '<span class="cookies-missing">Error: ' + msg + "</span>";
     }
   }
 });
@@ -1104,14 +1173,16 @@ $btn("btn-playlist-import").addEventListener("click", async () => {
   try {
     const text = await navigator.clipboard.readText();
     const trimmed = text.trim();
-    if (
-      !trimmed ||
-      !/^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/playlist\?/.test(trimmed)
-    ) {
+    if (!trimmed) {
+      showError("Clipboard is empty");
+      return;
+    }
+    const endpoint = _detectImportEndpoint(trimmed);
+    if (!endpoint) {
       showError("Clipboard does not contain a YouTube playlist URL");
       return;
     }
-    const res = await fetch("/api/playlists/import-from-url", {
+    const res = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url: trimmed, name: "" }),
@@ -1126,7 +1197,9 @@ $btn("btn-playlist-import").addEventListener("click", async () => {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("read")) {
-      showError("Cannot read clipboard. Paste the URL in Settings > Playlist Import instead.");
+      showError(
+        "Cannot read clipboard. Paste the URL in Settings > Playlist Import instead.",
+      );
     } else {
       showError("Import error: " + msg);
     }
@@ -1409,7 +1482,8 @@ async function pollSigninStatus(el: HTMLElement): Promise<void> {
           if (r.auth_cookies?.length)
             html += ` (auth: ${r.auth_cookies.join(", ")})`;
           if (!r.has_all_auth)
-            html += ' — <span class="cookies-missing">missing some auth cookies</span>';
+            html +=
+              ' — <span class="cookies-missing">missing some auth cookies</span>';
           html += "</span>";
           el.innerHTML = html;
         } else {
@@ -1420,9 +1494,10 @@ async function pollSigninStatus(el: HTMLElement): Promise<void> {
         return;
       }
       if (data.in_progress) {
-        el.innerHTML = data.mode === "desktop"
-          ? '<span class="cookies-missing">Waiting for sign-in in the new window...</span>'
-          : '<span class="cookies-missing">A browser tab opened. Sign in to YouTube, then <strong>close your browser completely</strong> and wait...</span>';
+        el.innerHTML =
+          data.mode === "desktop"
+            ? '<span class="cookies-missing">Waiting for sign-in in the new window...</span>'
+            : '<span class="cookies-missing">A browser tab opened. Sign in to YouTube, then <strong>close your browser completely</strong> and wait...</span>';
       }
     } catch {
       el.innerHTML = '<span class="cookies-missing">Connection lost</span>';
@@ -1505,4 +1580,3 @@ async function loadDownloads(): Promise<void> {
     if (list) list.textContent = "";
   }
 }
-

@@ -6,8 +6,8 @@
     "watch": "esbuild index.ts --bundle --outfile=index.min.js --target=es2020 --watch"
   },
   "devDependencies": {
-    "esbuild": "^0.25.0",
-    "typescript": "^5.7.0",
+    "esbuild": "^0.28.1",
+    "typescript": "^7.0.2",
     "@types/bun": "latest"
   },
   "module": "index.ts",

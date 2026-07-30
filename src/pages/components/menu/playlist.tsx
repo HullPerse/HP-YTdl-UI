@@ -5,6 +5,8 @@ import { Input } from "@/components/input";
 import { Download, Loader2, List } from "lucide-react";
 import type { PlaylistInfo } from "@/types";
 import VideoPage from "./video";
+import Modal from "@/components/modal";
+import EditPlaylist from "../edit";
 
 function PlaylistPage({ selectedPlaylist }: { selectedPlaylist: string }) {
   const [selected, setSelected] = useState<PlaylistInfo | null>(null);
@@ -12,6 +14,7 @@ function PlaylistPage({ selectedPlaylist }: { selectedPlaylist: string }) {
   const [showImport, setShowImport] = useState(false);
   const [importUrl, setImportUrl] = useState("");
   const [importName, setImportName] = useState("");
+  const [openEdit, setOpenEdit] = useState<boolean>(false);
   const [downloadedTracks, setDownloadedTracks] = useState<Set<number>>(
     new Set(),
   );
@@ -98,9 +101,10 @@ function PlaylistPage({ selectedPlaylist }: { selectedPlaylist: string }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             url: first.url,
-            filename: selected.tracks[i]!
-              .replace(/[\\/:*?"<>|]/g, "_")
-              .slice(0, 120),
+            filename: selected.tracks[i]!.replace(/[\\/:*?"<>|]/g, "_").slice(
+              0,
+              120,
+            ),
             fmt: "mp3",
             quality: "720",
             playlist: selected.name,
@@ -108,8 +112,7 @@ function PlaylistPage({ selectedPlaylist }: { selectedPlaylist: string }) {
             include_thumbnail: false,
           }),
         });
-        if (r.ok)
-          setDownloadedTracks((prev) => new Set(prev).add(i));
+        if (r.ok) setDownloadedTracks((prev) => new Set(prev).add(i));
       } catch {
         /* ignore */
       }
@@ -143,6 +146,16 @@ function PlaylistPage({ selectedPlaylist }: { selectedPlaylist: string }) {
         >
           Import from URL
         </Button>
+        {selectedPlaylist && (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!selectedPlaylist}
+            onClick={() => setOpenEdit(true)}
+          >
+            Edit
+          </Button>
+        )}
       </div>
 
       {showImport && (
@@ -158,7 +171,9 @@ function PlaylistPage({ selectedPlaylist }: { selectedPlaylist: string }) {
               variant="outline"
               size="sm"
               onClick={async () => {
-                const text = await navigator.clipboard.readText().catch(() => "");
+                const text = await navigator.clipboard
+                  .readText()
+                  .catch(() => "");
                 if (text) setImportUrl(text);
               }}
             >
@@ -191,6 +206,17 @@ function PlaylistPage({ selectedPlaylist }: { selectedPlaylist: string }) {
             Import
           </Button>
         </div>
+      )}
+
+      {selectedPlaylist && openEdit && (
+        <Modal header={selectedPlaylist} onClose={() => setOpenEdit(false)}>
+          <EditPlaylist
+            selectedPlaylist={selectedPlaylist}
+            currentTrack={currentIndex}
+            setCurrentTrack={setCurrentIndex}
+            onClose={() => setOpenEdit(false)}
+          />
+        </Modal>
       )}
 
       {selected && currentTrack ? (

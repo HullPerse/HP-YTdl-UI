@@ -13,7 +13,7 @@ function Modal({
 }) {
   return (
     <main
-      className="h-screen w-screen z-40000 bg-black/50 items-center justify-center flex"
+      className="absolute left-1/2 top-1/2 -translate-1/2 h-screen w-screen z-40000 bg-black/50 items-center justify-center flex"
       onClick={onClose}
     >
       <div

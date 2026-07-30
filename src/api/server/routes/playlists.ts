@@ -8,7 +8,7 @@ import {
 } from "fs";
 import { basename, extname, join } from "path";
 
-import { DOWNLOADS_DIR, PLAYLISTS_DIR } from "@/config/paths";
+import { COOKIES_FILE, DOWNLOADS_DIR, PLAYLISTS_DIR } from "@/config/paths";
 import type { PlaylistCheckBody, PlaylistImportBody } from "@/types";
 import {
   cleanTrackLine,
@@ -31,9 +31,17 @@ async function fetchPlaylistTracks(url: string): Promise<string[]> {
       "--ignore-errors",
       "--quiet",
     ]);
+
     const stdout = await new Response(
       proc.stdout as ReadableStream<Uint8Array>,
     ).text();
+
+    const exitCode = await proc.exited;
+
+    logger.log(`yt-dlp add exit=${exitCode} stdout=${stdout.length} chars`);
+
+    logger.debug(`yt-dlp stdout:\n${stdout}`);
+
     const tracks: string[] = [];
     for (const line of stdout.trim().split("\n").filter(Boolean)) {
       try {
@@ -218,5 +226,209 @@ export const playlistRenameApi = {
 
     logger.log(`renamed ${renamed.length} files (${errors.length} errors)`);
     return HttpResponse.json({ renamed, errors, total: dlFiles.length });
+  },
+};
+
+export const playlistGetApi = {
+  async GET(req: Request) {
+    const name = (req as any).params.name as string;
+    const playlistPath = join(PLAYLISTS_DIR, `${sanitizeFilename(name)}.csv`);
+    if (!existsSync(playlistPath)) {
+      return HttpResponse.error("Playlist not found", 404);
+    }
+    const content = readFileSync(playlistPath, "utf-8");
+    const tracks = content.split("\n").map(cleanTrackLine).filter(Boolean);
+    return HttpResponse.json({ name, tracks, count: tracks.length });
+  },
+};
+
+export const playlistAddApi = {
+  async POST(req: Request) {
+    const name = (req as any).params.name as string;
+    const body = (await req.json()) as { url?: string };
+
+    if (!body.url?.trim()) {
+      return HttpResponse.error("URL required", 400);
+    }
+
+    const playlistPath = join(PLAYLISTS_DIR, `${sanitizeFilename(name)}.csv`);
+
+    if (!existsSync(playlistPath)) {
+      return HttpResponse.error("Playlist not found", 404);
+    }
+
+    try {
+      const url = body.url.trim();
+
+      logger.log(`add tracks playlist="${name}" url="${url}"`);
+
+      const proc = ytdlp([
+        url,
+        "--dump-json",
+        "--flat-playlist",
+        "--ignore-errors",
+        "--no-warnings",
+        "--quiet",
+        "--cookies",
+        COOKIES_FILE,
+      ]);
+
+      const stdoutPromise = new Response(
+        proc.stdout as ReadableStream<Uint8Array>,
+      ).text();
+
+      const stderrPromise = new Response(
+        proc.stderr as ReadableStream<Uint8Array>,
+      ).text();
+
+      const [stdout, stderr] = await Promise.all([
+        stdoutPromise,
+        stderrPromise,
+      ]);
+
+      const exitCode = await proc.exited;
+
+      logger.log(
+        `yt-dlp exit=${exitCode} stdout=${stdout.length} stderr=${stderr.length}`,
+      );
+
+      if (stderr.trim()) {
+        logger.error(`yt-dlp stderr:\n${stderr}`);
+      }
+
+      if (exitCode !== 0 && !stdout.trim()) {
+        return HttpResponse.error(
+          stderr.trim() || "Failed to fetch YouTube video or playlist",
+          400,
+        );
+      }
+
+      const incoming: string[] = [];
+
+      for (const line of stdout.split("\n").filter(Boolean)) {
+        try {
+          const entry = JSON.parse(line);
+
+          if (!entry?.title) continue;
+
+          const title = cleanTrackLine(String(entry.title));
+
+          if (title) {
+            incoming.push(title);
+          }
+        } catch {
+          logger.debug("failed to parse yt-dlp entry");
+        }
+      }
+
+      if (!incoming.length) {
+        return HttpResponse.error("No videos found at the provided URL", 400);
+      }
+
+      const existing = readFileSync(playlistPath, "utf-8")
+        .split("\n")
+        .map(cleanTrackLine)
+        .filter(Boolean);
+
+      const existingSet = new Set(existing);
+
+      const added: string[] = [];
+      const skipped: string[] = [];
+
+      for (const track of incoming) {
+        if (existingSet.has(track)) {
+          skipped.push(track);
+          continue;
+        }
+
+        existingSet.add(track);
+        existing.push(track);
+        added.push(track);
+      }
+
+      writeFileSync(playlistPath, existing.join("\n"), "utf-8");
+
+      playlistCache.delete("all");
+
+      logger.log(
+        `added ${added.length} tracks to "${name}", skipped ${skipped.length}`,
+      );
+
+      return HttpResponse.json({
+        name,
+        added,
+        skipped,
+        addedCount: added.length,
+        skippedCount: skipped.length,
+        count: existing.length,
+      });
+    } catch (e) {
+      logger.error(`add-to-playlist failed: ${e}`);
+      return HttpResponse.error(String(e));
+    }
+  },
+};
+
+export const playlistDeleteApi = {
+  async POST(req: Request) {
+    const name = (req as any).params.name as string;
+    const body = (await req.json()) as { index?: number };
+    if (!Number.isInteger(body.index) || body.index! < 0) {
+      return HttpResponse.error("Invalid track index", 400);
+    }
+    const playlistPath = join(PLAYLISTS_DIR, `${sanitizeFilename(name)}.csv`);
+    if (!existsSync(playlistPath)) {
+      return HttpResponse.error("Playlist not found", 404);
+    }
+    const tracks = readFileSync(playlistPath, "utf-8")
+      .split("\n")
+      .map(cleanTrackLine)
+      .filter(Boolean);
+    if (body.index! >= tracks.length) {
+      return HttpResponse.error("Track index out of range", 400);
+    }
+    const [removed] = tracks.splice(body.index!, 1);
+    writeFileSync(playlistPath, tracks.join("\n"), "utf-8");
+    playlistCache.delete("all");
+    logger.log(`deleted track ${body.index} from "${name}"`);
+    return HttpResponse.json({ name, removed, tracks, count: tracks.length });
+  },
+};
+
+export const playlistReorderApi = {
+  async POST(req: Request) {
+    const name = (req as any).params.name as string;
+    const body = (await req.json()) as { from?: number; to?: number };
+    if (
+      !Number.isInteger(body.from) ||
+      !Number.isInteger(body.to) ||
+      body.from! < 0 ||
+      body.to! < 0
+    ) {
+      return HttpResponse.error("Invalid track positions", 400);
+    }
+    const playlistPath = join(PLAYLISTS_DIR, `${sanitizeFilename(name)}.csv`);
+    if (!existsSync(playlistPath)) {
+      return HttpResponse.error("Playlist not found", 404);
+    }
+    const tracks = readFileSync(playlistPath, "utf-8")
+      .split("\n")
+      .map(cleanTrackLine)
+      .filter(Boolean);
+    if (body.from! >= tracks.length || body.to! >= tracks.length) {
+      return HttpResponse.error("Track position out of range", 400);
+    }
+    if (body.from === body.to) {
+      return HttpResponse.json({ name, tracks, count: tracks.length });
+    }
+    const [track] = tracks.splice(body.from!, 1);
+    if (track === undefined) {
+      return HttpResponse.error("Track not found", 404);
+    }
+    tracks.splice(body.to!, 0, track);
+    writeFileSync(playlistPath, tracks.join("\n"), "utf-8");
+    playlistCache.delete("all");
+    logger.log(`reordered track ${body.from} -> ${body.to} in "${name}"`);
+    return HttpResponse.json({ name, tracks, count: tracks.length });
   },
 };

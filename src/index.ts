@@ -16,6 +16,10 @@ import {
   playlistImportFromUrlApi,
   playlistCheckExistingApi,
   playlistRenameApi,
+  playlistAddApi,
+  playlistGetApi,
+  playlistDeleteApi,
+  playlistReorderApi,
 } from "@/api/server/routes/playlists";
 import {
   queueAddApi,
@@ -52,7 +56,12 @@ const server = serve({
     "/api/playlists": playlistsApi,
     "/api/playlists/import": playlistImportApi,
     "/api/playlists/import-from-url": playlistImportFromUrlApi,
+    "/api/playlists/add": playlistAddApi,
     "/api/playlists/check-existing": playlistCheckExistingApi,
+    "/api/playlists/:name": playlistGetApi,
+    "/api/playlists/:name/add": playlistAddApi,
+    "/api/playlists/:name/delete": playlistDeleteApi,
+    "/api/playlists/:name/reorder": playlistReorderApi,
     "/api/rename/playlist/:name": playlistRenameApi,
 
     "/api/queue/add": queueAddApi,

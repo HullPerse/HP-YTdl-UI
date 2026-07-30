@@ -32,27 +32,46 @@ export function createPlaylistEventApi(playlistWatcher: PlaylistWatcher) {
 }
 
 export const searchApi = async (req: Request) => {
-  const query = parseQuery(req.url).get("query");
-  const maxResults = Number(parseQuery(req.url).get("max_results") || 8);
+  const params = parseQuery(req.url);
+  const query = params.get("query");
+  const maxResults = Number(params.get("max_results") || 8);
 
-  if (!query?.trim()) return HttpResponse.error("Query is empty", 400);
+  if (!query?.trim()) {
+    return HttpResponse.error("Query is empty", 400);
+  }
 
   const trimmed = query.trim();
   const cached = searchCache.get(trimmed);
-  if (cached) {
-    logger.log(`cache hit for "${trimmed}" (${cached.results.length} results)`);
-    return HttpResponse.json({ results: cached.results });
+
+  if (cached && cached.results.length >= maxResults) {
+    logger.log(
+      `cache hit for "${trimmed}" (${cached.results.length} cached results, requested ${maxResults})`,
+    );
+
+    return HttpResponse.json({
+      results: cached.results.slice(0, maxResults),
+    });
   }
 
   try {
-    logger.log(`query="${trimmed}" maxResults=${maxResults}`);
+    logger.log(
+      `query="${trimmed}" maxResults=${maxResults}${
+        cached ? ` (${cached.results.length} cached)` : ""
+      }`,
+    );
 
     const results = await searchYoutube(trimmed, maxResults);
 
-    searchCache.set(trimmed, { results, timestamp: Date.now() });
+    searchCache.set(trimmed, {
+      results,
+      timestamp: Date.now(),
+    });
+
     logger.log(`${results.length} results for "${trimmed}"`);
 
-    return HttpResponse.json({ results });
+    return HttpResponse.json({
+      results,
+    });
   } catch (error) {
     logger.error(`failed: ${error}`);
     return HttpResponse.error(`Search failed: ${error}`);

@@ -95,3 +95,10 @@ const server = serve({
 logger.log(`started at ${server.url}`);
 logger.log(`data: ${DATA_DIR}`);
 logger.log(`cookies: ${COOKIES_FILE}`);
+
+Bun.spawn({
+  cmd: ["cmd", "/c", "start", "", server.url.toString()],
+  stdout: "ignore",
+  stderr: "ignore",
+  stdin: "ignore",
+});

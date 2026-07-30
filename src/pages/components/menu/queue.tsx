@@ -138,7 +138,7 @@ function QueuePage() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="truncate font-medium">{escapeHtml(item.filename)}</p>
-            <p className="text-xs text-muted">
+            <p className="text-xs text-muted  flex flex-row gap-1 items-center">
               <StatusIcon status={item.status} /> {item.status}
             </p>
             {item.status === "downloading" && item.progress > 0 && (

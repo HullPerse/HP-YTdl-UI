@@ -1,24 +1,46 @@
 import tailwind from "bun-plugin-tailwind";
-import { rm } from "node:fs/promises";
+import { rm, mkdir, copyFile } from "node:fs/promises";
 import path from "node:path";
 
-const outdir = path.join(process.cwd(), "dist");
-await rm(outdir, { recursive: true, force: true });
+const root = process.cwd();
+const outdir = path.join(root, "dist");
 
-const entrypoints = [...new Bun.Glob("src/**/*.html").scanSync()];
+await rm(outdir, { recursive: true, force: true });
+await mkdir(outdir, { recursive: true });
 
 const result = await Bun.build({
-  entrypoints,
+  entrypoints: ["./src/index.ts"],
   outdir,
+
   plugins: [tailwind],
+
+  target: "bun",
   minify: true,
-  target: "browser",
-  sourcemap: "linked",
+  sourcemap: "none",
+
+  compile: {
+    outfile: path.join(outdir, "ytdl.exe"),
+  },
+
   define: {
     "process.env.NODE_ENV": JSON.stringify("production"),
   },
 });
 
-for (const output of result.outputs) {
-  console.log(` ${path.relative(process.cwd(), output.path)}  ${(output.size / 1024).toFixed(1)} KB`);
+if (!result.success) {
+  console.error("Build failed:");
+
+  for (const log of result.logs) {
+    console.error(log);
+  }
+
+  process.exit(1);
 }
+
+await copyFile(
+  path.join(root, "src", "lib", "cookies_extract.py"),
+  path.join(outdir, "cookies_extract.py"),
+);
+
+console.log("\nBuild complete.");
+console.log(`Executable: ${path.join(outdir, "ytdl.exe")}`);

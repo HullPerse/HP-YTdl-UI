@@ -1,15 +1,17 @@
-import { resolve } from "path";
+import { dirname, resolve } from "path";
 import { mkdirSync } from "fs";
 
-const APP_DIR = resolve(import.meta.dir, "../..");
+export const APP_DIR = process.cwd();
+
+export const SCRIPT_PATH = resolve(APP_DIR, "cookies_extract.py");
 export const DATA_DIR = resolve(APP_DIR, "data");
 export const PLAYLISTS_DIR = resolve(DATA_DIR, "playlists");
 export const DOWNLOADS_DIR = resolve(DATA_DIR, "downloads");
 export const COOKIES_FILE = resolve(DATA_DIR, "cookies.txt");
 
+mkdirSync(DATA_DIR, { recursive: true });
 mkdirSync(PLAYLISTS_DIR, { recursive: true });
 mkdirSync(DOWNLOADS_DIR, { recursive: true });
-mkdirSync(DATA_DIR, { recursive: true });
 
 export const CHROME_PROFILES = [
   "C:\\Users\\Kocherga\\AppData\\Local\\imput\\Helium\\User Data\\Default",

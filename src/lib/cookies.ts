@@ -1,14 +1,12 @@
-import { COOKIES_FILE, AUTH_COOKIE_NAMES } from "@/config/paths";
+import { COOKIES_FILE, AUTH_COOKIE_NAMES, SCRIPT_PATH } from "@/config/paths";
 import type { CookieDetectResult, CookieInspectResult } from "@/types";
-import { writeFile, readFile, unlink } from "fs/promises";
+import { writeFile, unlink } from "fs/promises";
 import { getPythonBinary } from "@/lib/ytdlp";
 import { join } from "path";
 import { getCookieBrowserTargets } from "./utils";
 import Logger from "@/lib/logger";
 
 const logger = new Logger("COOKIES");
-
-const SCRIPT_PATH = join(import.meta.dir, "cookies_extract.py");
 
 async function extractCookiesFromBrowser(
   browser: string,

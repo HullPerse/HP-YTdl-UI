@@ -21,17 +21,23 @@ function MenuPage({ setSettings }: { setSettings: (value: boolean) => void }) {
   const [selectedPlaylist, setSelectedPlaylist] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (currentTab === "playlist") loadPlaylists();
-  }, [currentTab]);
-
-  async function loadPlaylists() {
+  const loadPlaylists = useCallback(async () => {
     try {
       const res = await fetch("/api/playlists");
       const d = await res.json();
       if (Array.isArray(d)) setPlaylists(d);
     } catch { /* ignore */ }
-  }
+  }, []);
+
+  useEffect(() => {
+    if (currentTab === "playlist") loadPlaylists();
+  }, [currentTab, loadPlaylists]);
+
+  useEffect(() => {
+    const es = new EventSource("/api/events/playlists");
+    es.onmessage = loadPlaylists;
+    return () => es.close();
+  }, [loadPlaylists]);
 
   const handlePaste = useCallback(async () => {
     const data = await navigator.clipboard.readText();

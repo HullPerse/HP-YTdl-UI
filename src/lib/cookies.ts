@@ -5,7 +5,7 @@ import { getPythonBinary } from "@/lib/ytdlp";
 import { join } from "path";
 import { getCookieBrowserTargets } from "./utils";
 
-const SCRIPT_PATH = join(import.meta.dir!, "cookies_extract.py");
+const SCRIPT_PATH = join(import.meta.dir, "cookies_extract.py");
 
 async function extractCookiesFromBrowser(
   browser: string,

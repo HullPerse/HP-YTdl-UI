@@ -1,7 +1,7 @@
 import { resolve } from "path";
 import { mkdirSync } from "fs";
 
-export const APP_DIR = resolve(import.meta.dir, "../../..");
+export const APP_DIR = resolve(import.meta.dir, "../..");
 export const DATA_DIR = resolve(APP_DIR, "data");
 export const PLAYLISTS_DIR = resolve(DATA_DIR, "playlists");
 export const DOWNLOADS_DIR = resolve(DATA_DIR, "downloads");
@@ -19,8 +19,12 @@ export const CHROME_PROFILES = [
 
 export const EXTRACTOR_ARGS = { youtube: { player_client: ["web"] } };
 
-export const BGUTIL_SERVER_PATH = "C:\\Users\\Kocherga\\bgutil-ytdlp-pot-provider\\server\\build";
-export const BGUTIL_GENERATE_ONCE = resolve(BGUTIL_SERVER_PATH, "generate_once.js");
+export const BGUTIL_SERVER_PATH =
+  "C:\\Users\\Kocherga\\bgutil-ytdlp-pot-provider\\server\\build";
+export const BGUTIL_GENERATE_ONCE = resolve(
+  BGUTIL_SERVER_PATH,
+  "generate_once.js",
+);
 export const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 

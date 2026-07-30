@@ -1,13 +1,43 @@
 import { useState, useEffect, useRef } from "react";
 import { Button, buttonVariants } from "@/components/button";
 import { Input } from "@/components/input";
-import { Download, ExternalLink, Loader2, Check, X } from "lucide-react";
+import {
+  Download,
+  ExternalLink,
+  Loader2,
+  Check,
+  X,
+  SkipForward,
+  ListMusic,
+} from "lucide-react";
 import type { SearchResult, QueueItemData } from "@/types";
-import type { VariantProps } from "class-variance-authority";
+import ImageComponent from "@/components/image";
 
 const TEMPLATE_KEY = "filenameTemplate";
 
-function VideoPage({ query, searchKey }: { query: string; searchKey: number }) {
+interface VideoPageProps {
+  query: string;
+  searchKey: number;
+  playlistTrack?: string;
+  playlistIndex?: number;
+  playlistTotal?: number;
+  playlistName?: string;
+  onPlaylistAdvance?: () => void;
+  onPlaylistSkip?: () => void;
+  onPlaylistDownloadAll?: () => void;
+}
+
+function VideoPage({
+  query,
+  searchKey,
+  playlistTrack,
+  playlistIndex,
+  playlistTotal,
+  playlistName,
+  onPlaylistAdvance,
+  onPlaylistSkip,
+  onPlaylistDownloadAll,
+}: VideoPageProps) {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<SearchResult | null>(null);
@@ -22,6 +52,9 @@ function VideoPage({ query, searchKey }: { query: string; searchKey: number }) {
   const [queueStatus, setQueueStatus] = useState<string>("");
   const [showPreview, setShowPreview] = useState(false);
   const prevSearchKey = useRef(0);
+  const lastTrackRef = useRef<string | undefined>(undefined);
+
+  const isPlaylist = playlistTrack !== undefined;
 
   useEffect(() => {
     if (searchKey !== prevSearchKey.current && query.trim()) {
@@ -29,6 +62,18 @@ function VideoPage({ query, searchKey }: { query: string; searchKey: number }) {
       doSearch(query);
     }
   }, [searchKey]);
+
+  useEffect(() => {
+    if (isPlaylist && playlistTrack && playlistTrack !== lastTrackRef.current) {
+      lastTrackRef.current = playlistTrack;
+      setSelected(null);
+      setShowPreview(false);
+      setQueuedId(null);
+      setQueueStatus("");
+      closePreview();
+      doSearch(playlistTrack);
+    }
+  }, [playlistTrack]);
 
   useEffect(() => {
     if (!queuedId) return;
@@ -41,6 +86,9 @@ function VideoPage({ query, searchKey }: { query: string; searchKey: number }) {
         if (mine.status === "completed") {
           setQueueStatus("Done!");
           es.close();
+          if (isPlaylist && onPlaylistAdvance) {
+            setTimeout(() => onPlaylistAdvance(), 1500);
+          }
         } else if (mine.status === "failed") {
           setQueueStatus(`Failed: ${mine.error}`);
           es.close();
@@ -55,7 +103,7 @@ function VideoPage({ query, searchKey }: { query: string; searchKey: number }) {
       }
     };
     return () => es.close();
-  }, [queuedId]);
+  }, [queuedId, isPlaylist, onPlaylistAdvance]);
 
   async function doSearch(q: string) {
     setLoading(true);
@@ -133,7 +181,7 @@ function VideoPage({ query, searchKey }: { query: string; searchKey: number }) {
           filename: getFilename(),
           fmt: format === "audio" ? "mp3" : "mp4",
           quality,
-          playlist: "",
+          playlist: playlistName || "",
           output_dir: localStorage.getItem("outputDir") || "",
           include_thumbnail: false,
         }),
@@ -148,47 +196,71 @@ function VideoPage({ query, searchKey }: { query: string; searchKey: number }) {
 
   return (
     <div className="flex flex-col p-2 gap-2">
+      {isPlaylist && playlistTrack != null && (
+        <div className="flex flex-row items-center gap-2 p-2 border border-border bg-accent/30">
+          <ListMusic className="size-4 shrink-0 text-muted" />
+          <span className="text-sm font-medium shrink-0">
+            Track {playlistIndex! + 1}/{playlistTotal}
+          </span>
+          <span className="text-xs text-muted flex-1 truncate">
+            {playlistTrack}
+          </span>
+          {onPlaylistSkip && (
+            <Button variant="outline" size="sm" onClick={onPlaylistSkip}>
+              <SkipForward className="size-3" /> Skip
+            </Button>
+          )}
+          {onPlaylistDownloadAll && (
+            <Button variant="accent" size="sm" onClick={onPlaylistDownloadAll}>
+              <Download className="size-3" /> Download All
+            </Button>
+          )}
+        </div>
+      )}
+
       {results.length > 0 && (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-2">
-          {results.map((r) => (
-            <div
-              key={r.id}
-              className="border border-border rounded overflow-hidden group"
-            >
-              <div className="relative aspect-video bg-accent">
-                <img
-                  src={r.thumbnail}
-                  alt=""
-                  className="w-full h-full object-cover"
+          {results.map((item) => (
+            <div key={item.id} className="flex flex-col border border-border">
+              <section className="relative aspect-video bg-accent group">
+                <ImageComponent
+                  src={item.thumbnail}
+                  alt={item.title}
+                  className="w-full h-full"
                 />
-                {r.duration != null && (
-                  <span className="absolute bottom-1 right-1 bg-black/70 text-xs px-1 rounded">
-                    {Math.floor(r.duration / 60)}:
-                    {String(r.duration % 60).padStart(2, "0")}
+                {item.duration && (
+                  <span className="absolute bottom-1 right-1 bg-black/50 text-xs px-1">
+                    {Math.floor(item.duration / 60)}:
+                    {String(item.duration % 60).padStart(2, "0")}
                   </span>
                 )}
+
                 <Button
                   variant="ghost"
-                  size="icon-sm"
-                  className="absolute top-1 right-1 opacity-0 group-hover:opacity-100"
-                  onClick={() => downloadThumb(r)}
+                  size="icon"
+                  className="absolute top-1 right-1 bg-black/50 hover:bg-black/70 active:bg-black/60 size-8 opacity-0 group-hover:opacity-100"
+                  onClick={() => downloadThumb(item)}
                   title="Download thumbnail"
                 >
                   <Download className="size-3" />
                 </Button>
-              </div>
-              <div className="p-2">
-                <p className="text-sm font-medium line-clamp-2">{r.title}</p>
-                <p className="text-xs text-muted truncate">{r.channel}</p>
+              </section>
+
+              <section className="flex flex-col p-1 gap-1 h-full">
+                <span className="text-sm font-medium line-clamp-2">
+                  {item.title}
+                </span>
+                <span className="text-xs text-muted line-clamp-1">
+                  {item.channel}
+                </span>
                 <Button
                   variant="accent"
-                  size="sm"
-                  className="mt-1 w-full"
-                  onClick={() => selectResult(r)}
+                  className="mt-auto h-8 w-full"
+                  onClick={() => selectResult(item)}
                 >
                   Select
                 </Button>
-              </div>
+              </section>
             </div>
           ))}
         </div>
@@ -200,8 +272,14 @@ function VideoPage({ query, searchKey }: { query: string; searchKey: number }) {
         </div>
       )}
 
-      {!loading && results.length === 0 && query.trim() && (
-        <p className="text-center text-muted p-4">No results found</p>
+      {!loading && results.length === 0 && (
+        <p className="text-center text-muted p-4">
+          {isPlaylist
+            ? "Searching..."
+            : query.trim()
+              ? "No results found"
+              : "Paste a URL or search by title"}
+        </p>
       )}
 
       {showPreview && selected && (

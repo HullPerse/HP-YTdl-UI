@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/button";
 import { Input } from "@/components/input";
-import { Download, SkipForward, Loader2, List, Check, X } from "lucide-react";
+import { Download, Loader2, List, SkipForward } from "lucide-react";
 import type { PlaylistInfo } from "@/types";
+import VideoPage from "./video";
 
 function PlaylistPage({ selectedPlaylist }: { selectedPlaylist: string }) {
   const [playlists, setPlaylists] = useState<PlaylistInfo[]>([]);
@@ -12,11 +13,18 @@ function PlaylistPage({ selectedPlaylist }: { selectedPlaylist: string }) {
   const [importUrl, setImportUrl] = useState("");
   const [importName, setImportName] = useState("");
   const [importing, setImporting] = useState(false);
-  const [dlAll, setDlAll] = useState(false);
   const [downloadedTracks, setDownloadedTracks] = useState<Set<number>>(new Set());
-  const [downloadingIndex, setDownloadingIndex] = useState<number | null>(null);
+  const [dlAll, setDlAll] = useState(false);
 
-  useEffect(() => { loadPlaylists(); }, []);
+  const loadPlaylists = useCallback(async () => {
+    try {
+      const res = await fetch("/api/playlists");
+      const d = await res.json();
+      if (Array.isArray(d)) setPlaylists(d);
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { loadPlaylists(); }, [loadPlaylists]);
 
   useEffect(() => {
     if (selectedPlaylist && playlists.length) {
@@ -26,14 +34,6 @@ function PlaylistPage({ selectedPlaylist }: { selectedPlaylist: string }) {
       setDownloadedTracks(new Set());
     }
   }, [selectedPlaylist, playlists]);
-
-  async function loadPlaylists() {
-    try {
-      const res = await fetch("/api/playlists");
-      const d = await res.json();
-      if (Array.isArray(d)) setPlaylists(d);
-    } catch { /* ignore */ }
-  }
 
   async function doImport() {
     if (!importUrl.trim() || !importName.trim()) return;
@@ -52,53 +52,56 @@ function PlaylistPage({ selectedPlaylist }: { selectedPlaylist: string }) {
     setImporting(false);
   }
 
-  async function downloadTrack(track: string, index: number) {
-    setDownloadingIndex(index);
-    try {
-      const searchRes = await fetch(`/api/search?query=${encodeURIComponent(track)}&max_results=1`);
-      const searchData = await searchRes.json();
-      const first = searchData.results?.[0];
-      if (!first) return;
+  const currentTrack = selected?.tracks[currentIndex] ?? null;
+  const isLast = selected ? currentIndex >= selected.tracks.length - 1 : true;
 
-      const res = await fetch("/api/queue/add", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url: first.url,
-          filename: track.replace(/[\\/:*?"<>|]/g, "_").slice(0, 120),
-          fmt: "mp3",
-          quality: "720",
-          playlist: selected?.name || "",
-          output_dir: "",
-          include_thumbnail: false,
-        }),
-      });
-      if (res.ok) {
-        setDownloadedTracks(prev => new Set(prev).add(index));
-      }
-    } catch { /* ignore */ }
-    setDownloadingIndex(null);
-  }
+  const advance = useCallback(() => {
+    if (!selected) return;
+    if (currentIndex < selected.tracks.length - 1) {
+      setCurrentIndex(i => i + 1);
+    }
+  }, [selected, currentIndex]);
+
+  const skip = useCallback(() => {
+    if (!selected) return;
+    if (currentIndex < selected.tracks.length - 1) {
+      setCurrentIndex(i => i + 1);
+    }
+  }, [selected, currentIndex]);
 
   async function downloadAll() {
     if (!selected) return;
     setDlAll(true);
-    for (let i = 0; i < selected.tracks.length; i++) {
+    for (let i = currentIndex; i < selected.tracks.length; i++) {
       if (downloadedTracks.has(i)) continue;
-      await downloadTrack(selected.tracks[i]!, i);
+      try {
+        const res = await fetch(`/api/search?query=${encodeURIComponent(selected.tracks[i]!)}&max_results=1`);
+        const data = await res.json();
+        const first = data.results?.[0];
+        if (!first) continue;
+        const r = await fetch("/api/queue/add", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: first.url,
+            filename: selected.tracks[i]!.replace(/[\\/:*?"<>|]/g, "_").slice(0, 120),
+            fmt: "mp3",
+            quality: "720",
+            playlist: selected.name,
+            output_dir: "",
+            include_thumbnail: false,
+          }),
+        });
+        if (r.ok) setDownloadedTracks(prev => new Set(prev).add(i));
+      } catch { /* ignore */ }
       await new Promise(r => setTimeout(r, 500));
     }
     setDlAll(false);
   }
 
-  function skip() {
-    if (!selected) return;
-    setCurrentIndex(i => Math.min(i + 1, selected!.tracks.length - 1));
-  }
-
   return (
-    <div className="flex flex-col p-2 gap-2">
-      <div className="flex flex-row gap-2">
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-row gap-2 p-2">
         <Button variant="outline" size="sm" onClick={() => setShowImport(!showImport)}>
           <List className="size-4" /> Import
         </Button>
@@ -119,7 +122,7 @@ function PlaylistPage({ selectedPlaylist }: { selectedPlaylist: string }) {
       </div>
 
       {showImport && (
-        <div className="flex flex-col gap-2 p-2 border border-border">
+        <div className="flex flex-col gap-2 p-2 mx-2 border border-border">
           <div className="flex flex-row gap-2">
             <Input value={importUrl} onChange={e => setImportUrl(e.target.value)} placeholder="Playlist URL" className="flex-1" />
             <Button variant="outline" size="sm" onClick={async () => {
@@ -134,42 +137,21 @@ function PlaylistPage({ selectedPlaylist }: { selectedPlaylist: string }) {
         </div>
       )}
 
-      {selected && selected.tracks.length > 0 && (
-        <>
-          <div className="border border-border p-2">
-            <p className="text-sm mb-2">
-              Track {currentIndex + 1} of {selected.tracks.length}
-            </p>
-            <Input value={selected.tracks[currentIndex] || ""} readOnly className="mb-2" />
-            <div className="flex flex-row gap-2">
-              <Button variant="accent" size="sm" onClick={() => downloadTrack(selected.tracks[currentIndex]!, currentIndex)} disabled={downloadingIndex === currentIndex}>
-                {downloadingIndex === currentIndex ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />} Download
-              </Button>
-              <Button variant="outline" size="sm" onClick={skip}>
-                <SkipForward className="size-4" /> Skip
-              </Button>
-              <Button variant="accent" size="sm" onClick={downloadAll} disabled={dlAll} className="ml-auto">
-                {dlAll ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />} Download All
-              </Button>
-            </div>
-          </div>
-
-          <div className="border border-border max-h-80 overflow-y-auto">
-            {selected.tracks.map((track, i) => (
-              <div key={i}
-                className={`flex flex-row items-center gap-2 p-2 text-sm border-b border-border last:border-0 cursor-pointer hover:bg-accent/50 ${i === currentIndex ? "bg-accent font-bold" : ""}`}
-                onClick={() => setCurrentIndex(i)}>
-                <span className="text-muted w-6 shrink-0 text-right">{i + 1}</span>
-                <span className="flex-1 truncate">{track}</span>
-                {downloadingIndex === i && <Loader2 className="size-3 animate-spin shrink-0" />}
-                {downloadedTracks.has(i) && <Check className="size-3 text-success shrink-0" />}
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
-      {!selected && (
+      {selected && currentTrack ? (
+        <VideoPage
+          query=""
+          searchKey={0}
+          playlistTrack={currentTrack}
+          playlistIndex={currentIndex}
+          playlistTotal={selected.tracks.length}
+          playlistName={selected.name}
+          onPlaylistAdvance={advance}
+          onPlaylistSkip={!isLast ? skip : undefined}
+          onPlaylistDownloadAll={dlAll ? undefined : downloadAll}
+        />
+      ) : selected ? (
+        <p className="text-center text-muted p-4">All tracks done!</p>
+      ) : (
         <p className="text-center text-muted p-4">Select a playlist from the dropdown above</p>
       )}
     </div>

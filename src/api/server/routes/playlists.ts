@@ -10,7 +10,11 @@ import { basename, extname, join } from "path";
 
 import { DOWNLOADS_DIR, PLAYLISTS_DIR } from "@/config/paths";
 import type { PlaylistCheckBody, PlaylistImportBody } from "@/types";
-import { cleanTrackLine, parseYoutubeTitle, sanitizeFilename } from "@/lib/utils";
+import {
+  cleanTrackLine,
+  parseYoutubeTitle,
+  sanitizeFilename,
+} from "@/lib/utils";
 import { importPlaylist, importPlaylistFromUrl, ytdlp } from "@/lib/ytdlp";
 import Logger from "@/lib/logger";
 import HttpResponse from "@/api/response";
@@ -46,20 +50,22 @@ async function fetchPlaylistTracks(url: string): Promise<string[]> {
 
 export const playlistsApi = async () => {
   const files = readdirSync(PLAYLISTS_DIR).sort();
+  console.log(PLAYLISTS_DIR);
   const playlists = [];
 
-  for (const f of files) {
-    const ext = extname(f).toLowerCase();
+  for (const file of files) {
+    const ext = extname(file).toLowerCase();
     if (ext !== ".csv" && ext !== ".txt") continue;
 
-    const name = f.replace(/\.[^.]*$/, "");
-    const content = readFileSync(join(PLAYLISTS_DIR, f), "utf-8");
+    const name = file.replace(/\.[^.]*$/, "");
+    const content = readFileSync(join(PLAYLISTS_DIR, file), "utf-8");
     const tracks = content.split("\n").map(cleanTrackLine).filter(Boolean);
 
     playlists.push({ name, tracks, count: tracks.length });
   }
 
   logger.log(`returning ${playlists.length} playlists`);
+
   return HttpResponse.json(playlists);
 };
 
@@ -144,7 +150,9 @@ export const playlistCheckExistingApi = {
       }
     }
 
-    logger.log(`check-existing: ${existing.length}/${body.tracks.length} exist`);
+    logger.log(
+      `check-existing: ${existing.length}/${body.tracks.length} exist`,
+    );
     return HttpResponse.json({ existing });
   },
 };

@@ -23,7 +23,9 @@ export const downloadApi = {
       : DOWNLOADS_DIR;
     const outputPath = join(baseDir, `${safeName}.${ext}`);
 
-    logger.log(`url="${body.url}" fmt=${body.fmt} quality=${body.quality} thumbnail=${body.include_thumbnail}`);
+    logger.log(
+      `url="${body.url}" fmt=${body.fmt} quality=${body.quality} thumbnail=${body.include_thumbnail}`,
+    );
 
     if (existsSync(outputPath)) {
       logger.log(`already exists: ${outputPath}`);
@@ -55,9 +57,7 @@ export const downloadApi = {
         },
       );
 
-      const files = readdirSync(baseDir).filter((f) =>
-        f.startsWith(safeName),
-      );
+      const files = readdirSync(baseDir).filter((f) => f.startsWith(safeName));
       const actualFile = files[0] || `${safeName}.${ext}`;
 
       logger.log(`complete: ${actualFile}`);
@@ -70,7 +70,8 @@ export const downloadApi = {
       let msg = String(e);
       logger.error(`failed: ${msg}`);
       if (/sign in|bot/i.test(msg))
-        msg += " - Export cookies.txt from your browser and paste it in Settings";
+        msg +=
+          " - Export cookies.txt from your browser and paste it in Settings";
       return HttpResponse.error(msg);
     }
   },
@@ -83,7 +84,7 @@ export const downloadProgressApi = (req: Request) =>
         clearInterval(interval);
         return;
       }
-      const data = downloadProgress.get((req as any).params.urlHash!);
+      const data = downloadProgress.get((req as any).params.urlHash);
       if (data) {
         try {
           controller.enqueue(

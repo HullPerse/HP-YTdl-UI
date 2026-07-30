@@ -8,7 +8,7 @@ import HttpResponse from "@/api/response";
 const logger = new Logger("FILES");
 
 export const downloadFileApi = async (req: Request) => {
-  const filepath = join(DOWNLOADS_DIR, (req as any).params.filename!);
+  const filepath = join(DOWNLOADS_DIR, (req as any).params.filename);
   if (!existsSync(filepath)) return HttpResponse.error("File not found", 404);
   const file = Bun.file(filepath);
   return new Response(file);

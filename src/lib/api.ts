@@ -5,12 +5,14 @@ export function sse(
   ) => void | (() => void),
 ) {
   let cleanup: (() => void) | undefined;
+  const abortController = new AbortController();
   const stream = new ReadableStream({
     start(controller) {
-      cleanup = start(controller, new AbortController().signal) as
+      cleanup = start(controller, abortController.signal) as
         (() => void) | undefined;
     },
     cancel() {
+      abortController.abort();
       cleanup?.();
     },
   });

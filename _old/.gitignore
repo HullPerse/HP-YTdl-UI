@@ -1,0 +1,8 @@
+cookies.txt
+data/
+__pycache__
+node_modules/
+src/frontend/index.min.js
+dist/
+build/
+*.spec

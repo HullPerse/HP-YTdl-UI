@@ -4,6 +4,9 @@ import { writeFile, readFile, unlink } from "fs/promises";
 import { getPythonBinary } from "@/lib/ytdlp";
 import { join } from "path";
 import { getCookieBrowserTargets } from "./utils";
+import Logger from "@/lib/logger";
+
+const logger = new Logger("COOKIES");
 
 const SCRIPT_PATH = join(import.meta.dir, "cookies_extract.py");
 
@@ -23,9 +26,7 @@ async function extractCookiesFromBrowser(
   ];
   if (profile) args.push("--profile", profile);
 
-  console.log(
-    `[cookies] python extract: ${browser}${profile ? `:${profile}` : ""}`,
-  );
+  logger.log(`python extract: ${browser}${profile ? `:${profile}` : ""}`);
   const proc = Bun.spawn(args, { stdout: "pipe", stderr: "pipe" });
   const stdout = await new Response(
     proc.stdout as ReadableStream<Uint8Array>,
@@ -39,7 +40,7 @@ async function extractCookiesFromBrowser(
     } catch {
       error = stdout.trim();
     }
-    console.log(`[cookies] extract failed: ${error || `exit ${exitCode}`}`);
+    logger.log(`extract failed: ${error || `exit ${exitCode}`}`);
     return { success: false, error: error || `exit code ${exitCode}` };
   }
 
@@ -55,7 +56,7 @@ export async function cookiesExist(): Promise<boolean> {
   return await Bun.file(COOKIES_FILE).exists();
 }
 
-export async function readCookiesFile(): Promise<string> {
+async function readCookiesFile(): Promise<string> {
   return await Bun.file(COOKIES_FILE).text();
 }
 
@@ -67,7 +68,7 @@ export async function deleteCookiesFile(): Promise<void> {
   try {
     await unlink(COOKIES_FILE);
   } catch {
-    /* ignore */
+    logger.debug(`failed to delete cookies file`);
   }
 }
 
@@ -123,7 +124,7 @@ export async function autoDetectCookies(): Promise<CookieDetectResult> {
   const resultInfo: Record<string, string> = {};
   const targets = getCookieBrowserTargets();
 
-  console.log(`[cookies] auto-detect checking ${targets.length} browsers`);
+  logger.log(`auto-detect checking ${targets.length} browsers`);
 
   let bestJar = "";
   let bestLabel = "";
@@ -136,7 +137,7 @@ export async function autoDetectCookies(): Promise<CookieDetectResult> {
       ? `${browser}:${profile.split("\\").pop() || "default"}`
       : browser;
 
-    console.log(`[cookies] checking ${label}...`);
+    logger.log(`checking ${label}...`);
     try {
       const tmpFile = COOKIES_FILE + ".tmp";
       const { success } = await extractCookiesFromBrowser(
@@ -159,8 +160,8 @@ export async function autoDetectCookies(): Promise<CookieDetectResult> {
         const score = ytLines.length * 10 + authCount * 100 + lines.length;
         resultInfo[label] =
           `${lines.length}cookies(${ytLines.length}yt,${authCount}auth)`;
-        console.log(
-          `[cookies] ${label}: ${lines.length} cookies, ${ytLines.length} yt, ${authCount} auth (score=${score})`,
+        logger.log(
+          `${label}: ${lines.length} cookies, ${ytLines.length} yt, ${authCount} auth (score=${score})`,
         );
 
         if (score > bestScore) {
@@ -174,15 +175,15 @@ export async function autoDetectCookies(): Promise<CookieDetectResult> {
         try {
           await unlink(tmpFile);
         } catch {
-          /* ignore */
+          logger.debug(`failed to remove tmp cookies for ${label}`);
         }
       } else {
-        console.log(`[cookies] ${label}: no cookies extracted`);
+        logger.log(`${label}: no cookies extracted`);
         resultInfo[label] = "no_cookies";
       }
     } catch (e) {
       resultInfo[label] = classifyCookieError(e, label);
-      console.log(`[cookies] ${label}: ${resultInfo[label]}`);
+      logger.log(`${label}: ${resultInfo[label]}`);
     }
   }
 
@@ -190,7 +191,7 @@ export async function autoDetectCookies(): Promise<CookieDetectResult> {
     const detail = Object.entries(resultInfo)
       .map(([k, v]) => `${k}: ${v}`)
       .join("; ");
-    console.log(`[cookies] no cookies found: ${detail}`);
+    logger.log(`no cookies found: ${detail}`);
     return {
       found: false,
       total: 0,
@@ -199,9 +200,7 @@ export async function autoDetectCookies(): Promise<CookieDetectResult> {
     };
   }
 
-  console.log(
-    `[cookies] best: ${bestLabel} (${bestTotal} cookies, ${bestYtCount} yt)`,
-  );
+  logger.log(`best: ${bestLabel} (${bestTotal} cookies, ${bestYtCount} yt)`);
   try {
     const ytLines = bestJar
       .split("\n")
@@ -233,12 +232,12 @@ export async function autoDetectCookies(): Promise<CookieDetectResult> {
       detail: `Extracted ${bestTotal} cookies from ${bestLabel} (${bestYtCount} for YouTube, ${authCount} auth cookies)`,
       per_browser: resultInfo,
     };
-  } catch (e) {
-    console.error(`[cookies] write failed:`, e);
+  } catch (error) {
+    logger.error(` write failed: ${error}`);
     return {
       found: false,
       total: 0,
-      detail: `write_failed:${e}`,
+      detail: `write_failed:${error}`,
       per_browser: resultInfo,
     };
   }
@@ -266,7 +265,7 @@ export function getSigninStatus(): {
 
 export function cancelSignin(): void {
   if (signinState.inProgress) {
-    console.log(`[cookies] signin cancelled by user`);
+    logger.log(`signin cancelled by user`);
     signinState.inProgress = false;
     signinState.done = true;
     signinState.result = { success: false, error: "Cancelled by user" };
@@ -284,7 +283,7 @@ export async function startSignin(): Promise<void> {
     stdout: "ignore",
     stderr: "ignore",
   });
-  console.log(`[cookies] signin: opened browser to login page`);
+  logger.log(`signin: opened browser to login page`);
 
   const targets = getCookieBrowserTargets();
   let attempts = 0;
@@ -294,7 +293,7 @@ export async function startSignin(): Promise<void> {
     while (attempts < maxAttempts && signinState.inProgress) {
       await new Promise((r) => setTimeout(r, 5000));
       attempts++;
-      console.log(`[cookies] signin poll attempt ${attempts}/${maxAttempts}`);
+      logger.log(`signin poll attempt ${attempts}/${maxAttempts}`);
 
       for (const [browser, profile] of targets) {
         if (!signinState.inProgress) return;
@@ -322,8 +321,8 @@ export async function startSignin(): Promise<void> {
               .map((l) => l.split("\t")[5]!);
 
             if (foundAuth.length > 0) {
-              console.log(
-                `[cookies] signin success from ${label}: ${ytLines.length} yt cookies, auth: ${foundAuth.join(",")}`,
+              logger.log(
+                `signin success from ${label}: ${ytLines.length} yt cookies, auth: ${foundAuth.join(",")}`,
               );
               const netscape = [
                 "# Netscape HTTP Cookie File",
@@ -345,14 +344,14 @@ export async function startSignin(): Promise<void> {
               try {
                 await unlink(tmpFile);
               } catch {
-                /* ignore */
+                logger.debug(`failed to remove signin tmp cookies`);
               }
               return;
             }
             try {
               await unlink(tmpFile);
             } catch {
-              /* ignore */
+              logger.debug(`failed to remove signin tmp cookies`);
             }
           }
         } catch {
@@ -362,7 +361,7 @@ export async function startSignin(): Promise<void> {
     }
 
     if (signinState.inProgress) {
-      console.log(`[cookies] signin timed out after ${maxAttempts} attempts`);
+      logger.log(`signin timed out after ${maxAttempts} attempts`);
       signinState.result = {
         success: false,
         error: "Timed out. Close your browser fully and try again.",

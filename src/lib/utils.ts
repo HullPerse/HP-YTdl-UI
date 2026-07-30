@@ -62,23 +62,6 @@ export function cleanTrackLine(line: string): string {
   return line.trim().replace(/^\d+[.)]\s*/, "");
 }
 
-export function urlHash(url: string): string {
-  let h = 0;
-  for (let i = 0; i < url.length; i++) {
-    h = (h << 5) - h + url.charCodeAt(i);
-    h = h & 0xffffffff;
-    if (h > 0x7fffffff) h -= 0x100000000;
-  }
-  return Math.abs(h).toString(16);
-}
-
-export function normalizeVersion(ver: string): string {
-  return ver
-    .split(".")
-    .map((p) => p.replace(/^0+/, "") || "0")
-    .join(".");
-}
-
 export function parseProgressLine(
   line: string,
 ): { percent: number; speed: string; eta: string } | null {

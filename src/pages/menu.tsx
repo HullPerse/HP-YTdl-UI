@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/button";
 import { menuTabs } from "@/config";
 import type { MenuTab, PlaylistInfo } from "@/types";
@@ -14,30 +15,33 @@ function MenuPage({ setSettings }: { setSettings: (value: boolean) => void }) {
   const [value, setValue] = useState("");
   const [searchKey, setSearchKey] = useState(0);
   const [recentSearches, setRecentSearches] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem(RECENT_KEY) || "[]"); } catch { return []; }
+    try {
+      return JSON.parse(localStorage.getItem(RECENT_KEY) || "[]");
+    } catch {
+      return [];
+    }
   });
   const [showRecent, setShowRecent] = useState(false);
-  const [playlists, setPlaylists] = useState<PlaylistInfo[]>([]);
   const [selectedPlaylist, setSelectedPlaylist] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
 
-  const loadPlaylists = useCallback(async () => {
-    try {
-      const res = await fetch("/api/playlists");
-      const d = await res.json();
-      if (Array.isArray(d)) setPlaylists(d);
-    } catch { /* ignore */ }
-  }, []);
+  const { data } = useQuery<PlaylistInfo[]>({
+    queryKey: ["playlists"],
+    queryFn: () => fetch("/api/playlists").then((r) => r.json()),
+    enabled: currentTab === "playlist",
+    staleTime: 10_000,
+  });
 
-  useEffect(() => {
-    if (currentTab === "playlist") loadPlaylists();
-  }, [currentTab, loadPlaylists]);
+  const playlists = Array.isArray(data) ? data : [];
 
   useEffect(() => {
     const es = new EventSource("/api/events/playlists");
-    es.onmessage = loadPlaylists;
+    es.onmessage = () => {
+      queryClient.invalidateQueries({ queryKey: ["playlists"] });
+    };
     return () => es.close();
-  }, [loadPlaylists]);
+  }, [queryClient]);
 
   const handlePaste = useCallback(async () => {
     const data = await navigator.clipboard.readText();
@@ -46,28 +50,40 @@ function MenuPage({ setSettings }: { setSettings: (value: boolean) => void }) {
     inputRef.current?.focus();
   }, []);
 
-  const doSearch = useCallback((q: string) => {
-    if (!q.trim()) return;
-    setSearchKey(k => k + 1);
-    const updated = [q.trim(), ...recentSearches.filter(s => s !== q.trim())].slice(0, 5);
-    setRecentSearches(updated);
-    localStorage.setItem(RECENT_KEY, JSON.stringify(updated));
-  }, [recentSearches]);
+  const doSearch = useCallback(
+    (q: string) => {
+      if (!q.trim()) return;
+      setSearchKey((k) => k + 1);
+      const updated = [
+        q.trim(),
+        ...recentSearches.filter((s) => s !== q.trim()),
+      ].slice(0, 5);
+      setRecentSearches(updated);
+      localStorage.setItem(RECENT_KEY, JSON.stringify(updated));
+    },
+    [recentSearches],
+  );
 
   const handleEnter = useCallback(() => {
     if (value.trim()) doSearch(value);
   }, [value, doSearch]);
 
-  const removeRecent = useCallback((i: number) => {
-    const updated = recentSearches.filter((_, j) => j !== i);
-    setRecentSearches(updated);
-    localStorage.setItem(RECENT_KEY, JSON.stringify(updated));
-  }, [recentSearches]);
+  const removeRecent = useCallback(
+    (i: number) => {
+      const updated = recentSearches.filter((_, j) => j !== i);
+      setRecentSearches(updated);
+      localStorage.setItem(RECENT_KEY, JSON.stringify(updated));
+    },
+    [recentSearches],
+  );
 
-  const clickRecent = useCallback((s: string) => {
-    setValue(s);
-    doSearch(s);
-  }, [doSearch]);
+  const clickRecent = useCallback(
+    (s: string) => {
+      setValue(s);
+      doSearch(s);
+    },
+    [doSearch],
+  );
 
   return (
     <main className="flex flex-col h-full">
@@ -86,14 +102,20 @@ function MenuPage({ setSettings }: { setSettings: (value: boolean) => void }) {
               ref={inputRef}
               type="text"
               value={value}
-              onChange={e => setValue(e.target.value)}
+              onChange={(e) => setValue(e.target.value)}
               placeholder="Paste URL or search by title..."
               className="flex-1 p-2 bg-accent placeholder:text-muted text-text border-0 outline-0"
               onFocus={() => setShowRecent(true)}
               onBlur={() => setTimeout(() => setShowRecent(false), 200)}
-              onKeyDown={e => { if (e.key === "Enter") handleEnter(); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleEnter();
+              }}
             />
-            <Button variant="accent" className="h-10 rounded-none shrink-0" onClick={() => doSearch(value)}>
+            <Button
+              variant="accent"
+              className="h-10 rounded-none shrink-0"
+              onClick={() => doSearch(value)}
+            >
               <Search className="size-4" />
             </Button>
             {showRecent && recentSearches.length > 0 && (
@@ -105,7 +127,13 @@ function MenuPage({ setSettings }: { setSettings: (value: boolean) => void }) {
                     onMouseDown={() => clickRecent(s)}
                   >
                     <span className="flex-1 truncate">{s}</span>
-                    <X className="size-3 text-muted shrink-0" onClick={e => { e.stopPropagation(); removeRecent(i); }} />
+                    <X
+                      className="size-3 text-muted shrink-0"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeRecent(i);
+                      }}
+                    />
                   </div>
                 ))}
               </div>
@@ -116,11 +144,15 @@ function MenuPage({ setSettings }: { setSettings: (value: boolean) => void }) {
         {currentTab === "playlist" && (
           <select
             value={selectedPlaylist}
-            onChange={e => setSelectedPlaylist(e.target.value)}
+            onChange={(e) => setSelectedPlaylist(e.target.value)}
             className="flex-1 h-10 bg-accent text-text px-2 border-0 outline-0 cursor-pointer"
           >
             <option value="">Select playlist...</option>
-            {playlists.map(p => <option key={p.name} value={p.name}>{p.name} ({p.count})</option>)}
+            {playlists.map((p) => (
+              <option key={p.name} value={p.name}>
+                {p.name} ({p.count})
+              </option>
+            ))}
           </select>
         )}
 
@@ -135,14 +167,18 @@ function MenuPage({ setSettings }: { setSettings: (value: boolean) => void }) {
       </div>
 
       <section className="p-1 flex flex-row gap-1 w-full items-center border-b-2 border-border shrink-0">
-        {menuTabs.map(tab => {
+        {menuTabs.map((tab) => {
           const isActive = currentTab === tab;
           const title = tab.charAt(0).toUpperCase() + tab.slice(1);
           return (
             <Button
               key={tab}
               variant={isActive ? "accent" : "outline"}
-              onClick={() => { setCurrentTab(tab); setValue(""); setShowRecent(false); }}
+              onClick={() => {
+                setCurrentTab(tab);
+                setValue("");
+                setShowRecent(false);
+              }}
               className="h-10 w-20"
               disabled={isActive}
             >
@@ -153,8 +189,12 @@ function MenuPage({ setSettings }: { setSettings: (value: boolean) => void }) {
       </section>
 
       <section className="flex-1 overflow-y-auto">
-        {currentTab === "video" && <VideoPage query={value} searchKey={searchKey} />}
-        {currentTab === "playlist" && <PlaylistPage selectedPlaylist={selectedPlaylist} />}
+        {currentTab === "video" && (
+          <VideoPage query={value} searchKey={searchKey} />
+        )}
+        {currentTab === "playlist" && (
+          <PlaylistPage selectedPlaylist={selectedPlaylist} />
+        )}
         {currentTab === "queue" && <QueuePage />}
       </section>
     </main>

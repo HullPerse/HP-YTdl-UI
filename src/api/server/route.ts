@@ -3,6 +3,7 @@ import { getVideoMetadata, searchYoutube } from "@/lib/ytdlp";
 import Logger from "@/lib/logger";
 import HttpResponse from "../response";
 import type PlaylistWatcher from "./watcher";
+import { searchCache, metadataCache } from "@/lib/cache";
 
 const logger = new Logger("API");
 
@@ -36,12 +37,20 @@ export const searchApi = async (req: Request) => {
 
   if (!query?.trim()) return HttpResponse.error("Query is empty", 400);
 
+  const trimmed = query.trim();
+  const cached = searchCache.get(trimmed);
+  if (cached) {
+    logger.log(`cache hit for "${trimmed}" (${cached.results.length} results)`);
+    return HttpResponse.json({ results: cached.results });
+  }
+
   try {
-    logger.log(`query="${query.trim()}" maxResults=${maxResults}`);
+    logger.log(`query="${trimmed}" maxResults=${maxResults}`);
 
-    const results = await searchYoutube(query.trim(), maxResults);
+    const results = await searchYoutube(trimmed, maxResults);
 
-    logger.log(`${results.length} results for "${query.trim()}"`);
+    searchCache.set(trimmed, { results, timestamp: Date.now() });
+    logger.log(`${results.length} results for "${trimmed}"`);
 
     return HttpResponse.json({ results });
   } catch (error) {
@@ -55,16 +64,24 @@ export const metadataApi = async (req: Request) => {
 
   if (!url?.trim()) return HttpResponse.error("URL is empty", 400);
 
+  const trimmed = url.trim();
+  const cached = metadataCache.get(trimmed);
+  if (cached) {
+    logger.log(`cache hit for "${trimmed}"`);
+    return HttpResponse.json(cached);
+  }
+
   try {
-    logger.log(`url="${url.trim()}"`);
+    logger.log(`url="${trimmed}"`);
 
-    const result = await getVideoMetadata(url.trim());
+    const result = await getVideoMetadata(trimmed);
 
+    metadataCache.set(trimmed, result);
     logger.log(`title="${result.source_title}" duration=${result.duration}`);
 
     return HttpResponse.json(result);
   } catch (error) {
-    logger.error(`"${url.trim()}" failed: ${error}`);
+    logger.error(`"${trimmed}" failed: ${error}`);
     return HttpResponse.error(`URL failed: ${error}`);
   }
 };

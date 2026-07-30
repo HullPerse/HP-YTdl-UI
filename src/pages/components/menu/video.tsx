@@ -1,6 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button, buttonVariants } from "@/components/button";
 import { Input } from "@/components/input";
+import ConflictModal from "@/components/conflict";
 import {
   Download,
   ExternalLink,
@@ -27,6 +29,10 @@ interface VideoPageProps {
   onPlaylistDownloadAll?: () => void;
 }
 
+interface SearchResponse {
+  results: SearchResult[];
+}
+
 function VideoPage({
   query,
   searchKey,
@@ -38,8 +44,6 @@ function VideoPage({
   onPlaylistSkip,
   onPlaylistDownloadAll,
 }: VideoPageProps) {
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<SearchResult | null>(null);
   const [format, setFormat] = useState<"audio" | "video">("audio");
   const [quality, setQuality] = useState(
@@ -50,28 +54,35 @@ function VideoPage({
   );
   const [queuedId, setQueuedId] = useState<string | null>(null);
   const [queueStatus, setQueueStatus] = useState<string>("");
+  const [conflictItem, setConflictItem] = useState<QueueItemData | null>(null);
   const [showPreview, setShowPreview] = useState(false);
-  const prevSearchKey = useRef(0);
-  const lastTrackRef = useRef<string | undefined>(undefined);
 
   const isPlaylist = playlistTrack !== undefined;
+  const searchTerm = isPlaylist ? playlistTrack : query;
+
+  const { data, isLoading } = useQuery<SearchResponse>({
+    queryKey: [
+      "search",
+      isPlaylist ? `pl:${playlistIndex}:${playlistTrack}` : query,
+      searchKey,
+    ],
+    queryFn: () =>
+      fetch(
+        `/api/search?query=${encodeURIComponent(searchTerm?.trim() ?? "")}&max_results=8`,
+      ).then((r) => r.json()),
+    enabled: isPlaylist ? !!playlistTrack : !!query.trim() && searchKey > 0,
+    staleTime: 60_000,
+  });
+
+  const results = data?.results || [];
 
   useEffect(() => {
-    if (searchKey !== prevSearchKey.current && query.trim()) {
-      prevSearchKey.current = searchKey;
-      doSearch(query);
-    }
-  }, [searchKey]);
-
-  useEffect(() => {
-    if (isPlaylist && playlistTrack && playlistTrack !== lastTrackRef.current) {
-      lastTrackRef.current = playlistTrack;
+    if (isPlaylist && playlistTrack) {
       setSelected(null);
       setShowPreview(false);
       setQueuedId(null);
       setQueueStatus("");
-      closePreview();
-      doSearch(playlistTrack);
+      setConflictItem(null);
     }
   }, [playlistTrack]);
 
@@ -95,8 +106,7 @@ function VideoPage({
         } else if (mine.status === "downloading")
           setQueueStatus(`${mine.progress.toFixed(1)}%`);
         else if (mine.status === "conflict") {
-          setQueueStatus("File exists");
-          es.close();
+          setConflictItem(mine);
         }
       } catch {
         /* ignore */
@@ -105,20 +115,33 @@ function VideoPage({
     return () => es.close();
   }, [queuedId, isPlaylist, onPlaylistAdvance]);
 
-  async function doSearch(q: string) {
-    setLoading(true);
-    setResults([]);
-    try {
-      const res = await fetch(
-        `/api/search?query=${encodeURIComponent(q.trim())}&max_results=8`,
-      );
-      const d = await res.json();
-      setResults(d.results || []);
-    } catch {
-      setResults([]);
-    }
-    setLoading(false);
-  }
+  const queueMutation = useMutation({
+    mutationFn: (body: Record<string, unknown>) =>
+      fetch("/api/queue/add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }).then((r) => r.json()),
+    onSuccess: (d: { item_id: string }) => {
+      setQueuedId(d.item_id);
+      setQueueStatus("Queued");
+    },
+    onError: () => {
+      setQueueStatus("Failed to queue");
+    },
+  });
+
+  const resolveMutation = useMutation({
+    mutationFn: (body: { id: string; action: string }) =>
+      fetch(`/api/queue/resolve/${body.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: body.action }),
+      }).then((r) => r.json()),
+    onSuccess: () => {
+      setConflictItem(null);
+    },
+  });
 
   function selectResult(r: SearchResult) {
     setSelected(r);
@@ -169,29 +192,18 @@ function VideoPage({
     );
   }
 
-  async function queueDownload() {
+  function queueDownload() {
     if (!selected) return;
     setQueueStatus("Adding...");
-    try {
-      const res = await fetch("/api/queue/add", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url: selected.url,
-          filename: getFilename(),
-          fmt: format === "audio" ? "mp3" : "mp4",
-          quality,
-          playlist: playlistName || "",
-          output_dir: localStorage.getItem("outputDir") || "",
-          include_thumbnail: false,
-        }),
-      });
-      const d = await res.json();
-      setQueuedId(d.item_id);
-      setQueueStatus("Queued");
-    } catch {
-      setQueueStatus("Failed to queue");
-    }
+    queueMutation.mutate({
+      url: selected.url,
+      filename: getFilename(),
+      fmt: format === "audio" ? "mp3" : "mp4",
+      quality,
+      playlist: playlistName || "",
+      output_dir: localStorage.getItem("outputDir") || "",
+      include_thumbnail: false,
+    });
   }
 
   return (
@@ -266,13 +278,13 @@ function VideoPage({
         </div>
       )}
 
-      {loading && (
+      {isLoading && (
         <div className="flex items-center justify-center p-8 text-muted">
           <Loader2 className="size-6 animate-spin" />
         </div>
       )}
 
-      {!loading && results.length === 0 && (
+      {!isLoading && results.length === 0 && (
         <p className="text-center text-muted p-4">
           {isPlaylist
             ? "Searching..."
@@ -280,6 +292,13 @@ function VideoPage({
               ? "No results found"
               : "Paste a URL or search by title"}
         </p>
+      )}
+
+      {conflictItem && (
+        <ConflictModal
+          item={conflictItem}
+          onResolve={(id, action) => resolveMutation.mutate({ id, action })}
+        />
       )}
 
       {showPreview && selected && (
@@ -368,28 +387,25 @@ function VideoPage({
                 variant={
                   (() => {
                     if (queuedId && queueStatus === "Done!") return "success";
-                    else if (queueStatus) return "error";
-                    else return "accent";
+                    if (queueStatus?.startsWith("Failed")) return "error";
+                    return "accent";
                   })() as keyof typeof buttonVariants
                 }
                 onClick={queueDownload}
-                disabled={!!queuedId}
-                className={queueStatus === "Done!" ? "bg-success!" : ""}
+                disabled={!!queuedId || queueMutation.isPending}
                 title={
                   queuedId && queueStatus === "Done!"
                     ? "Downloaded"
                     : queueStatus || "Download"
                 }
               >
-                {queuedId && queueStatus === "Done!" ? (
+                {queuedId && queueStatus === "Done!" && (
                   <Check className="size-4" />
-                ) : null}
+                )}
 
                 {queuedId && queueStatus === "Done!"
                   ? "Downloaded"
-                  : queueStatus
-                    ? "Error"
-                    : "Download"}
+                  : queueStatus || "Download"}
               </Button>
             </div>
           </div>

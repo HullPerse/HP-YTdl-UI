@@ -1,7 +1,7 @@
 import { resolve } from "path";
 import { mkdirSync } from "fs";
 
-export const APP_DIR = resolve(import.meta.dir, "../..");
+const APP_DIR = resolve(import.meta.dir, "../..");
 export const DATA_DIR = resolve(APP_DIR, "data");
 export const PLAYLISTS_DIR = resolve(DATA_DIR, "playlists");
 export const DOWNLOADS_DIR = resolve(DATA_DIR, "downloads");
@@ -19,7 +19,7 @@ export const CHROME_PROFILES = [
 
 export const EXTRACTOR_ARGS = { youtube: { player_client: ["web"] } };
 
-export const BGUTIL_SERVER_PATH =
+const BGUTIL_SERVER_PATH =
   "C:\\Users\\Kocherga\\bgutil-ytdlp-pot-provider\\server\\build";
 export const BGUTIL_GENERATE_ONCE = resolve(
   BGUTIL_SERVER_PATH,

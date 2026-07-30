@@ -18,6 +18,7 @@ import {
 import { importPlaylist, importPlaylistFromUrl, ytdlp } from "@/lib/ytdlp";
 import Logger from "@/lib/logger";
 import HttpResponse from "@/api/response";
+import { playlistCache } from "@/lib/cache";
 
 const logger = new Logger("PLAYLISTS");
 
@@ -49,8 +50,13 @@ async function fetchPlaylistTracks(url: string): Promise<string[]> {
 }
 
 export const playlistsApi = async () => {
+  const cached = playlistCache.get("all");
+  if (cached) {
+    logger.log(`cache hit: ${cached.length} playlists`);
+    return HttpResponse.json(cached);
+  }
+
   const files = readdirSync(PLAYLISTS_DIR).sort();
-  console.log(PLAYLISTS_DIR);
   const playlists = [];
 
   for (const file of files) {
@@ -64,6 +70,7 @@ export const playlistsApi = async () => {
     playlists.push({ name, tracks, count: tracks.length });
   }
 
+  playlistCache.set("all", playlists);
   logger.log(`returning ${playlists.length} playlists`);
 
   return HttpResponse.json(playlists);
@@ -87,6 +94,7 @@ export const playlistImportApi = {
       );
       writeFileSync(playlistPath, tracks.join("\n"), "utf-8");
 
+      playlistCache.delete("all");
       logger.log(`imported "${result.name}" with ${result.count} tracks`);
       return HttpResponse.json({ ...result, path: playlistPath });
     } catch (e) {
@@ -113,6 +121,7 @@ export const playlistImportFromUrlApi = {
       );
       writeFileSync(playlistPath, tracks.join("\n"), "utf-8");
 
+      playlistCache.delete("all");
       logger.log(`imported "${result.name}" with ${result.count} tracks`);
       return HttpResponse.json({ ...result, path: playlistPath });
     } catch (e) {

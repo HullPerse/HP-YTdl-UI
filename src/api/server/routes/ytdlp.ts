@@ -4,24 +4,25 @@ import HttpResponse from "@/api/response";
 
 const logger = new Logger("YT-DLP");
 
+function normalizeVersion(v: string): string {
+  return v
+    .split(".")
+    .map((p) => p.replace(/^0+/, "") || "0")
+    .join(".");
+}
+
 export const ytdlpVersionApi = async () => {
   const { version, available } = await getYtdlpVersion();
   const latest = await getLatestPypiVersion();
 
-  const curNorm = version
-    .split(".")
-    .map((p) => p.replace(/^0+/, "") || "0")
-    .join(".");
-  const latNorm = latest
-    .split(".")
-    .map((p) => p.replace(/^0+/, "") || "0")
-    .join(".");
-  const updateAvailable = !!(version && latest && curNorm !== latNorm);
+  const normVersion = normalizeVersion(version);
+  const normLatest = normalizeVersion(latest);
+  const updateAvailable = !!(version && latest && normVersion !== normLatest);
 
   logger.log(`version="${version}" latest="${latest}" available=${available} update=${updateAvailable}`);
   return HttpResponse.json({
-    version,
-    latest,
+    version: normVersion,
+    latest: normLatest,
     available,
     frozen: false,
     update_available: updateAvailable,

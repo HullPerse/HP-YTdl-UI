@@ -9,8 +9,7 @@ import {
   searchApi,
   metadataApi,
 } from "@/api/server/route";
-import { downloadApi, downloadProgressApi } from "@/api/server/routes/download";
-import { downloadFileApi, downloadsListApi } from "@/api/server/routes/files";
+
 import {
   playlistsApi,
   playlistImportApi,
@@ -49,11 +48,6 @@ const server = serve({
 
     "/api/search": searchApi,
     "/api/metadata": metadataApi,
-
-    "/api/download": downloadApi,
-    "/api/download/progress/:urlHash": downloadProgressApi,
-    "/api/download/:filename": downloadFileApi,
-    "/api/downloads": downloadsListApi,
 
     "/api/playlists": playlistsApi,
     "/api/playlists/import": playlistImportApi,

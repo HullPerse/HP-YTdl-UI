@@ -8,12 +8,18 @@ import {
   parseProgressLine,
   getCookieBrowserTargets,
 } from "@/lib/utils";
-import { EXTRACTOR_ARGS, USER_AGENT, BGUTIL_GENERATE_ONCE } from "@/config/paths";
+import {
+  EXTRACTOR_ARGS,
+  USER_AGENT,
+  BGUTIL_GENERATE_ONCE,
+} from "@/config/paths";
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync } from "fs";
 import { extname, join } from "path";
 import { tmpdir } from "os";
+import Logger from "@/lib/logger";
 
 let _ytdlpPath: string | null = null;
+const logger = new Logger("YT-DLP");
 
 let _pythonPath: string | null = null;
 
@@ -23,7 +29,7 @@ export function getPythonBinary(): string {
   const ytBin = ensureYtdlpBinary();
   if (ytBin.includes("-m yt_dlp")) {
     _pythonPath = ytBin.split(" ")[0]!;
-    console.log(`[ytdlp] using python: ${_pythonPath}`);
+    logger.log(`using python: ${_pythonPath}`);
     return _pythonPath;
   }
 
@@ -35,20 +41,20 @@ export function getPythonBinary(): string {
       });
       if (proc.exitCode === 0) {
         _pythonPath = cmd;
-        console.log(`[ytdlp] found python: ${_pythonPath}`);
+        logger.log(`found python: ${_pythonPath}`);
         return _pythonPath;
       }
     } catch {
-      /* */
+      logger.warn(`python check failed`);
     }
   }
 
   _pythonPath = "python";
-  console.warn(`[ytdlp] python not found, using fallback: ${_pythonPath}`);
+  logger.warn(`python not found, using fallback: ${_pythonPath}`);
   return _pythonPath;
 }
 
-export function ensureYtdlpBinary(): string {
+function ensureYtdlpBinary(): string {
   if (_ytdlpPath) return _ytdlpPath;
 
   try {
@@ -60,12 +66,12 @@ export function ensureYtdlpBinary(): string {
       const line = proc.stdout.toString().trim().split("\n")[0]?.trim();
       if (line) {
         _ytdlpPath = line;
-        console.log(`[ytdlp] found in PATH: ${_ytdlpPath}`);
+        logger.log(`found in PATH: ${_ytdlpPath}`);
         return _ytdlpPath;
       }
     }
   } catch {
-    /* */
+    logger.warn(`where yt-dlp failed`);
   }
 
   const candidates = [
@@ -77,7 +83,7 @@ export function ensureYtdlpBinary(): string {
   for (const c of candidates) {
     if (existsSync(c)) {
       _ytdlpPath = c;
-      console.log(`[ytdlp] found at: ${_ytdlpPath}`);
+      logger.log(`found at: ${_ytdlpPath}`);
       return _ytdlpPath;
     }
   }
@@ -91,16 +97,16 @@ export function ensureYtdlpBinary(): string {
       if (proc.exitCode === 0) {
         _ytdlpPath = `${cmd} -m yt_dlp`;
         const ver = proc.stdout.toString().trim();
-        console.log(`[ytdlp] found via: ${_ytdlpPath} (v${ver})`);
+        logger.log(`found via: ${_ytdlpPath} (v${ver})`);
         return _ytdlpPath;
       }
     }
   } catch {
-    /* */
+    logger.debug(`python -m yt_dlp not available for this command`);
   }
 
   _ytdlpPath = "yt-dlp";
-  console.warn(`[ytdlp] not found, using fallback: ${_ytdlpPath}`);
+  logger.warn(`not found, using fallback: ${_ytdlpPath}`);
   return "yt-dlp";
 }
 
@@ -131,19 +137,27 @@ async function convertToMp3(
 ): Promise<void> {
   const args: string[] = [
     "ffmpeg",
-    "-i", input,
+    "-i",
+    input,
     "-vn",
-    "-c:a", "libmp3lame",
-    "-qscale:a", "2",
-    "-id3v2_version", "3",
+    "-c:a",
+    "libmp3lame",
+    "-qscale:a",
+    "2",
+    "-id3v2_version",
+    "3",
     "-y",
     output,
   ];
   if (thumbnail) {
     args.splice(3, 0, "-i", thumbnail, "-map", "0:a", "-map", "1");
-    args.splice(args.length - 2, 0,
-      "-metadata:s:v", "title=Cover",
-      "-metadata:s:v", "comment=Cover (front)",
+    args.splice(
+      args.length - 2,
+      0,
+      "-metadata:s:v",
+      "title=Cover",
+      "-metadata:s:v",
+      "comment=Cover (front)",
     );
   }
   const proc = Bun.spawn(args);
@@ -158,16 +172,29 @@ async function convertToMp4(
 ): Promise<void> {
   const args: string[] = [
     "ffmpeg",
-    "-i", input,
-    "-c:v", "libx264",
-    "-c:a", "aac",
-    "-movflags", "+faststart",
+    "-i",
+    input,
+    "-c:v",
+    "libx264",
+    "-c:a",
+    "aac",
+    "-movflags",
+    "+faststart",
     "-y",
     output,
   ];
   if (thumbnail) {
     args.splice(3, 0, "-i", thumbnail);
-    args.splice(7, 0, "-map", "0", "-map", "1", "-disposition:v:1", "attached_pic");
+    args.splice(
+      7,
+      0,
+      "-map",
+      "0",
+      "-map",
+      "1",
+      "-disposition:v:1",
+      "attached_pic",
+    );
   }
   const proc = Bun.spawn(args);
   const code = await proc.exited;
@@ -205,33 +232,31 @@ function extractVideoId(url: string): string | null {
 
 async function generatePoToken(videoId: string): Promise<string | null> {
   if (!existsSync(BGUTIL_GENERATE_ONCE)) {
-    console.warn(`[pot] generate_once.js not found at ${BGUTIL_GENERATE_ONCE}`);
+    logger.warn(`[pot] generate_once.js not found at ${BGUTIL_GENERATE_ONCE}`);
     return null;
   }
   try {
-    const proc = Bun.spawn([
-      "node",
-      BGUTIL_GENERATE_ONCE,
-      "-c", videoId,
-      "--verbose",
-    ], { stdout: "pipe", stderr: "pipe" });
+    const proc = Bun.spawn(
+      ["node", BGUTIL_GENERATE_ONCE, "-c", videoId, "--verbose"],
+      { stdout: "pipe", stderr: "pipe" },
+    );
     const { stdout, stderr, exitCode } = await collectOutput(proc);
     if (exitCode !== 0) {
-      console.warn(`[pot] generate_once.js failed: ${stderr.slice(0, 200)}`);
+      logger.warn(`[pot] generate_once.js failed: ${stderr.slice(0, 200)}`);
       return null;
     }
     const lines = stdout.trim().split("\n").filter(Boolean);
     const jsonLine = lines[lines.length - 1]!;
     const data = JSON.parse(jsonLine);
     if (!data.poToken) {
-      console.warn(`[pot] no poToken in response`);
+      logger.warn(`[pot] no poToken in response`);
       return null;
     }
     const poToken = data.poToken as string;
-    console.log(`[pot] generated PO token: ${poToken.slice(0, 20)}...`);
+    logger.log(`[pot] generated PO token: ${poToken.slice(0, 20)}...`);
     return poToken;
   } catch (e) {
-    console.warn(`[pot] generation failed: ${e}`);
+    logger.warn(`[pot] generation failed: ${e}`);
     return null;
   }
 }
@@ -262,7 +287,10 @@ export function ytdlp(
   });
 }
 
-export function trySpawnYtdlp(args: string[], poToken?: string): Bun.Subprocess | null {
+export function trySpawnYtdlp(
+  args: string[],
+  poToken?: string,
+): Bun.Subprocess | null {
   try {
     return ytdlp(args, poToken ? { poToken } : undefined);
   } catch {
@@ -305,7 +333,7 @@ export async function searchYoutube(
     "--quiet",
   ]);
   if (exitCode !== 0) {
-    console.warn(`[search] yt-dlp exited with code ${exitCode}`);
+    logger.warn(`[search] yt-dlp exited with code ${exitCode}`);
     return [];
   }
 
@@ -331,7 +359,7 @@ export async function searchYoutube(
     })
     .filter((r): r is SearchResult => r !== null);
 
-  console.log(`[search] ${results.length} results for "${query}"`);
+  logger.log(`[search] ${results.length} results for "${query}"`);
   return results;
 }
 
@@ -380,7 +408,8 @@ async function spawnAndMonitor(
       stderrText += text;
       for (const line of text.split("\n")) {
         const parsed = parseProgressLine(line);
-        if (parsed && onProgress) onProgress(parsed.percent, parsed.speed, parsed.eta);
+        if (parsed && onProgress)
+          onProgress(parsed.percent, parsed.speed, parsed.eta);
       }
     }
   } finally {
@@ -390,7 +419,7 @@ async function spawnAndMonitor(
   const exitCode = await proc.exited;
   if (exitCode !== 0) {
     const trimmed = stderrText.slice(0, 1500);
-    console.warn(`[download] yt-dlp exit ${exitCode}: ${trimmed}`);
+    logger.warn(`[download] yt-dlp exit ${exitCode}: ${trimmed}`);
     throw new Error(trimmed || "Download failed");
   }
 }
@@ -416,12 +445,17 @@ async function attemptDownload(
     "--newline",
     "--progress",
     "--embed-metadata",
-    "--extractor-retries", "5",
-    "--retries", "15",
+    "--extractor-retries",
+    "5",
+    "--retries",
+    "15",
   ];
 
   if (browser) {
-    args.push("--cookies-from-browser", browserProfile ? `${browser}:${browserProfile}` : browser);
+    args.push(
+      "--cookies-from-browser",
+      browserProfile ? `${browser}:${browserProfile}` : browser,
+    );
   } else if (cookiesFile) {
     args.push("--cookies", cookiesFile);
   }
@@ -432,47 +466,72 @@ async function attemptDownload(
 
   if (fmt === "mp3") {
     if (useFfmpeg) {
-      const tempDir = join(tmpdir(), `ytdl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
+      const tempDir = join(
+        tmpdir(),
+        `ytdl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      );
       mkdirSync(tempDir, { recursive: true });
 
       try {
         const tempBase = join(tempDir, "audio");
         args.push("-f", "bestaudio", "-o", `${tempBase}.%(ext)s`);
 
-        console.log(`[download] two-step mp3: downloading native audio`);
+        logger.log(`[download] two-step mp3: downloading native audio`);
         await spawnAndMonitor(args, onProgress, poToken);
 
         const tempFiles = readdirSync(tempDir);
-        const tempFile = tempFiles.find((f) => f !== "thumbnail" && !/\.(jpg|jpeg|png|webp)$/i.test(f));
+        const tempFile = tempFiles.find(
+          (f) => f !== "thumbnail" && !/\.(jpg|jpeg|png|webp)$/i.test(f),
+        );
         if (!tempFile) throw new Error("No audio file produced by yt-dlp");
 
         const thumbPath = includeThumbnail ? findThumbnail(tempDir) : undefined;
-        console.log(`[download] two-step mp3: converting to mp3${thumbPath ? " with thumbnail" : ""}`);
+        logger.log(
+          `[download] two-step mp3: converting to mp3${thumbPath ? " with thumbnail" : ""}`,
+        );
         await convertToMp3(join(tempDir, tempFile), outputPath, thumbPath);
       } finally {
         rmSync(tempDir, { recursive: true, force: true });
       }
     } else {
-      args.push("-f", "bestaudio/best", "-x", "--audio-format", "mp3", "--audio-quality", "0");
+      args.push(
+        "-f",
+        "bestaudio/best",
+        "-x",
+        "--audio-format",
+        "mp3",
+        "--audio-quality",
+        "0",
+      );
       args.push("-o", outputPath.replace(`.${ext}`, ".%(ext)s"));
       if (includeThumbnail) args.push("--embed-thumbnail");
-        console.log(`[download] one-step mp3`);
+      logger.log(`[download] one-step mp3`);
       await spawnAndMonitor(args, onProgress, poToken);
     }
   } else {
     if (useFfmpeg) {
-      const tempDir = join(tmpdir(), `ytdl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
+      const tempDir = join(
+        tmpdir(),
+        `ytdl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      );
       mkdirSync(tempDir, { recursive: true });
 
       try {
         const tempBase = join(tempDir, "video");
-        args.push("-f", `best[height<=${quality}]`, "-o", `${tempBase}.%(ext)s`);
+        args.push(
+          "-f",
+          `best[height<=${quality}]`,
+          "-o",
+          `${tempBase}.%(ext)s`,
+        );
 
-        console.log(`[download] two-step mp4: downloading native format`);
+        logger.log(`[download] two-step mp4: downloading native format`);
         await spawnAndMonitor(args, onProgress, poToken);
 
         const tempFiles = readdirSync(tempDir);
-        const tempFile = tempFiles.find((f) => !/\.(jpg|jpeg|png|webp)$/i.test(f));
+        const tempFile = tempFiles.find(
+          (f) => !/\.(jpg|jpeg|png|webp)$/i.test(f),
+        );
         if (!tempFile) throw new Error("No video file produced by yt-dlp");
 
         const tempFilePath = join(tempDir, tempFile);
@@ -481,85 +540,36 @@ async function attemptDownload(
         const thumbPath = includeThumbnail ? findThumbnail(tempDir) : undefined;
 
         if (tempExt === ".mp4" && !thumbPath) {
-          console.log(`[download] two-step mp4: already mp4, moving`);
+          logger.log(`[download] two-step mp4: already mp4, moving`);
           renameSync(tempFilePath, outputPath);
         } else {
-          console.log(`[download] two-step mp4: converting to mp4${thumbPath ? " with thumbnail" : ""}`);
+          logger.log(
+            `[download] two-step mp4: converting to mp4${thumbPath ? " with thumbnail" : ""}`,
+          );
           await convertToMp4(tempFilePath, outputPath, thumbPath);
         }
       } finally {
         rmSync(tempDir, { recursive: true, force: true });
       }
     } else {
-      args.push("-f", `bestvideo[height<=${quality}]+bestaudio/best[height<=${quality}]`);
+      args.push(
+        "-f",
+        `bestvideo[height<=${quality}]+bestaudio/best[height<=${quality}]`,
+      );
       args.push("--merge-output-format", "mp4");
       args.push("-o", outputPath.replace(`.${ext}`, ".%(ext)s"));
       if (includeThumbnail) args.push("--embed-thumbnail");
-      console.log(`[download] one-step mp4`);
+      logger.log(`[download] one-step mp4`);
       await spawnAndMonitor(args, onProgress, poToken);
     }
   }
-}
-
-export async function downloadVideo(
-  url: string,
-  outputPath: string,
-  fmt: string,
-  quality = "720",
-  cookiesFile?: string,
-  includeThumbnail = false,
-  onProgress?: (percent: number, speed: string, eta: string) => void,
-): Promise<void> {
-  const videoId = extractVideoId(url);
-  const poToken = videoId ? (await generatePoToken(videoId)) ?? undefined : undefined;
-
-  async function tryDownload(
-    cookies?: string,
-    browser?: string,
-    browserProfile?: string | null,
-  ): Promise<void> {
-    await attemptDownload(
-      url, outputPath, fmt, quality, cookies, includeThumbnail,
-      onProgress, browser, browserProfile, poToken,
-    );
-  }
-
-  // Try #1: with provided cookies file (or no auth)
-  try {
-    console.log(`[download] attempt 1: fmt=${fmt} quality=${quality} thumbnail=${includeThumbnail} cookies=${!!cookiesFile} pot=${!!poToken}`);
-    await tryDownload(cookiesFile);
-    return;
-  } catch (e) {
-    const msg = String(e);
-    console.warn(`[download] attempt 1 failed: ${msg.slice(0, 200)}`);
-
-    if (!/sign in|bot|No title found|403|forbidden/i.test(msg)) {
-      throw e;
-    }
-  }
-
-  // Try #2+: retry with --cookies-from-browser
-  console.log(`[download] retrying with browser cookies`);
-  for (const [browser, profile] of getCookieBrowserTargets()) {
-    try {
-      console.log(`[download] attempt with ${browser}${profile ? `:${profile}` : ""} cookies`);
-      await tryDownload(undefined, browser, profile);
-      console.log(`[download] succeeded with ${browser} cookies`);
-      return;
-    } catch (e) {
-      console.warn(`[download] ${browser} cookies failed: ${String(e).slice(0, 100)}`);
-    }
-  }
-
-  const detail = "Sign in to confirm you're not a bot. Export cookies.txt from your browser and paste it in Settings, or use a cookies file.";
-  throw new Error(detail);
 }
 
 export async function importPlaylist(
   url: string,
   name: string,
 ): Promise<PlaylistImportResult> {
-  console.log(`[playlist] import url="${url}" name="${name}"`);
+  logger.log(`[playlist] import url="${url}" name="${name}"`);
   const { stdout, exitCode } = await safeExecYtdlp([
     url,
     "--dump-json",
@@ -569,7 +579,7 @@ export async function importPlaylist(
     "--quiet",
   ]);
   if (exitCode !== 0) {
-    console.warn(`[playlist] import exit code ${exitCode}`);
+    logger.warn(`[playlist] import exit code ${exitCode}`);
     throw new Error(
       "This URL is not supported. Only YouTube playlists work with this feature.",
     );
@@ -581,25 +591,25 @@ export async function importPlaylist(
       const e = JSON.parse(line);
       if (e && e.title) tracks.push(String(e.title));
     } catch {
-      // skip
+      logger.debug(`failed to parse playlist track`);
     }
   }
 
   if (!tracks.length) {
-    console.warn(`[playlist] no tracks found for "${url}"`);
+    logger.warn(`[playlist] no tracks found for "${url}"`);
     throw new Error(
       "This URL is not supported. Only YouTube playlists work with this feature.",
     );
   }
 
-  console.log(`[playlist] imported "${name}" with ${tracks.length} tracks`);
+  logger.log(`[playlist] imported "${name}" with ${tracks.length} tracks`);
   return { name, count: tracks.length, path: "" };
 }
 
 export async function importPlaylistFromUrl(
   url: string,
 ): Promise<PlaylistImportResult> {
-  console.log(`[playlist] import-from-url url="${url}"`);
+  logger.log(`[playlist] import-from-url url="${url}"`);
   const { stdout, exitCode } = await safeExecYtdlp([
     url,
     "--dump-json",
@@ -609,7 +619,7 @@ export async function importPlaylistFromUrl(
     "--quiet",
   ]);
   if (exitCode !== 0) {
-    console.warn(`[playlist] import-from-url exit code ${exitCode}`);
+    logger.warn(`[playlist] import-from-url exit code ${exitCode}`);
     throw new Error(
       "This URL is not supported. Only YouTube playlists work with this feature.",
     );
@@ -625,7 +635,7 @@ export async function importPlaylistFromUrl(
       if (i === 0 && e.playlist_title) name = String(e.playlist_title);
       if (e && e.title) tracks.push(String(e.title));
     } catch {
-      // skip
+      logger.warn(`failed to parse track at index ${i}`);
     }
   }
 
@@ -672,14 +682,14 @@ export async function updateYtdlp(): Promise<{
       ? [binary.split(" ")[0]!, "-m", "pip", "install", "-U", "yt-dlp"]
       : ["pip", "install", "-U", "yt-dlp"];
 
-    console.log(`[ytdlp] updating via: ${pipCmd.join(" ")}`);
+    logger.log(`updating via: ${pipCmd.join(" ")}`);
     const proc = Bun.spawn(pipCmd, { stdout: "pipe", stderr: "pipe" });
     const timer = setTimeout(() => {
       try {
         proc.kill();
-        console.log(`[ytdlp] update timed out after 120s`);
+        logger.log(`update timed out after 120s`);
       } catch {
-        /* */
+        logger.debug(`failed to kill timed-out process`);
       }
     }, 120_000);
     const { stdout, stderr, exitCode } = await collectOutput(proc);
@@ -687,26 +697,15 @@ export async function updateYtdlp(): Promise<{
 
     if (exitCode === 0) {
       const { version } = await getYtdlpVersion();
-      console.log(`[ytdlp] updated to v${version}`);
+      logger.success(`updated to v${version}`);
       return { updated: true, version, output: stdout.trim() };
     }
-    console.warn(
-      `[ytdlp] update failed: ${(stderr || stdout).trim().slice(0, 300)}`,
-    );
+    logger.warn(`update failed: ${(stderr || stdout).trim().slice(0, 300)}`);
     return { updated: false, error: (stderr || stdout).trim() };
   } catch (e) {
-    console.error(`[ytdlp] update error:`, e);
+    logger.error(`update error: ${e}`);
     return { updated: false, error: String(e) };
   }
 }
 
-export function spawnYtdlpDetached(
-  args: string[],
-  cookiesFile?: string,
-): Bun.Subprocess | null {
-  const fullArgs = [...args, "--no-warnings"];
-  if (cookiesFile) {
-    fullArgs.push("--cookies", cookiesFile);
-  }
-  return trySpawnYtdlp(fullArgs);
-}
+

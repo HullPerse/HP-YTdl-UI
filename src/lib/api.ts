@@ -29,6 +29,4 @@ export function parseQuery(url: string): URLSearchParams {
   return new URL(url).searchParams;
 }
 
-export function getId(name: string): string {
-  return name.split("/").pop() || "";
-}
+

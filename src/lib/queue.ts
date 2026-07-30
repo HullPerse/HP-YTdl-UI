@@ -7,31 +7,45 @@ import {
 import { COOKIES_FILE, DOWNLOADS_DIR } from "@/config/paths";
 import { ytdlp, trySpawnYtdlp } from "@/lib/ytdlp";
 import { unlinkSync } from "fs";
+import PQueue from "p-queue";
+import Logger from "@/lib/logger";
+
+const logger = new Logger("QUEUE");
 
 let itemIdCounter = 0;
+
 function genId(): string {
   return (++itemIdCounter).toString(36).padStart(6, "0");
 }
 
-export class DownloadQueueManager {
+class DownloadQueueManager {
   items: QueueItemData[] = [];
-  maxConcurrent: number;
-  activeCount = 0;
-  private processTimer: Timer | null = null;
+  private queue: PQueue;
 
   constructor(maxConcurrent = 2) {
-    this.maxConcurrent = maxConcurrent;
+    this.queue = new PQueue({ concurrency: maxConcurrent });
   }
 
-  add(params: {
-    url: string;
-    filename: string;
-    fmt: string;
-    quality: string;
-    playlist: string;
-    output_dir: string;
-    include_thumbnail: boolean;
-  }): string {
+  get maxConcurrent(): number {
+    return this.queue.concurrency;
+  }
+
+  set maxConcurrent(n: number) {
+    this.queue.concurrency = Math.max(0, n);
+  }
+
+  add(
+    params: {
+      url: string;
+      filename: string;
+      fmt: string;
+      quality: string;
+      playlist: string;
+      output_dir: string;
+      include_thumbnail: boolean;
+    },
+    priority = 0,
+  ): string {
     const item: QueueItemData = {
       id: genId(),
       url: params.url,
@@ -51,9 +65,9 @@ export class DownloadQueueManager {
       output_path: "",
     };
     this.items.push(item);
-    this.tryProcess();
-    console.log(
-      `[queue] add id=${item.id} "${item.filename}" fmt=${item.fmt} quality=${item.quality}`,
+    this.queue.add(() => this._processItem(item), { priority });
+    logger.log(
+      `add id=${item.id} "${item.filename}" fmt=${item.fmt} quality=${item.quality} priority=${priority}`,
     );
     return item.id;
   }
@@ -67,13 +81,13 @@ export class DownloadQueueManager {
     } else {
       this.items.splice(idx, 1);
     }
-    console.log(`[queue] remove id=${itemId} status=${item.status}`);
+    logger.log(`remove id=${itemId} status=${item.status}`);
     return true;
   }
 
   skip(itemId: string): boolean {
     const ok = this.remove(itemId);
-    if (ok) console.log(`[queue] skip id=${itemId}`);
+    if (ok) logger.log(`skip id=${itemId}`);
     return ok;
   }
 
@@ -83,7 +97,7 @@ export class DownloadQueueManager {
     const [item] = this.items.splice(idx, 1);
     const clamped = Math.max(0, Math.min(newIndex, this.items.length));
     this.items.splice(clamped, 0, item!);
-    console.log(`[queue] reorder id=${itemId} from=${idx} to=${clamped}`);
+    logger.log(`reorder id=${itemId} from=${idx} to=${clamped}`);
   }
 
   clearCompleted(): void {
@@ -92,13 +106,13 @@ export class DownloadQueueManager {
       (it) => it.status === "waiting" || it.status === "downloading",
     );
     const removed = before - this.items.length;
-    console.log(`[queue] cleared ${removed} completed items`);
+    logger.log(`cleared ${removed} completed items`);
   }
 
   resolveConflict(itemId: string, action: "overwrite" | "skip"): boolean {
     const item = this.items.find((it) => it.id === itemId);
     if (!item || item.status !== "conflict") return false;
-    console.log(`[queue] resolve id=${itemId} action=${action}`);
+    logger.log(`resolve id=${itemId} action=${action}`);
     if (action === "overwrite") {
       try {
         if (item.output_path) unlinkSync(item.output_path);
@@ -107,12 +121,21 @@ export class DownloadQueueManager {
       }
       item.status = "waiting";
       item.progress = 0;
-      this.tryProcess();
+      this.queue.add(() => this._processItem(item));
     } else {
       item.status = "completed";
       item.progress = 100;
     }
     return true;
+  }
+
+  setMaxConcurrent(n: number): void {
+    this.maxConcurrent = Math.max(0, n);
+    logger.log(`config max_concurrent=${this.maxConcurrent}`);
+  }
+
+  getState(): QueueItemData[] {
+    return this.items.map((it) => ({ ...it }));
   }
 
   private async _retryWithBrowserCookies(
@@ -163,33 +186,9 @@ export class DownloadQueueManager {
     return false;
   }
 
-  setMaxConcurrent(n: number): void {
-    this.maxConcurrent = Math.max(0, n);
-  }
+  private async _processItem(item: QueueItemData): Promise<void> {
+    if (item.status !== "waiting") return;
 
-  getState(): QueueItemData[] {
-    return this.items.map((it) => ({ ...it }));
-  }
-
-  private tryProcess(): void {
-    if (this.processTimer) return;
-    this.processTimer = setTimeout(() => {
-      this.processTimer = null;
-      this._drain();
-    }, 0);
-  }
-
-  private _drain(): void {
-    while (this.maxConcurrent === 0 || this.activeCount < this.maxConcurrent) {
-      const waiting = this.items.find((it) => it.status === "waiting");
-      if (!waiting) break;
-      waiting.status = "downloading";
-      this.activeCount++;
-      this._startWorker(waiting);
-    }
-  }
-
-  private async _startWorker(item: QueueItemData): Promise<void> {
     try {
       const safeName = sanitizeFilename(item.filename);
       const ext = item.fmt === "mp3" ? "mp3" : "mp4";
@@ -199,14 +198,13 @@ export class DownloadQueueManager {
 
       item.output_path = `${subdir}/${safeName}.${ext}`;
 
-      console.log(`[queue] start id=${item.id} "${safeName}.${ext}"`);
+      item.status = "downloading";
+      logger.log(`start id=${item.id} "${safeName}.${ext}"`);
 
       if (await Bun.file(item.output_path).exists()) {
         item.status = "conflict";
         item.progress = 0;
-        console.log(
-          `[queue] conflict id=${item.id} path="${item.output_path}"`,
-        );
+        logger.log(`conflict id=${item.id} path="${item.output_path}"`);
         return;
       }
 
@@ -282,17 +280,17 @@ export class DownloadQueueManager {
       if (exitCode === 0) {
         item.status = "completed";
         item.progress = 100;
-        console.log(
-          `[queue] complete id=${item.id} path="${item.output_path}"`,
-        );
+        logger.log(`complete id=${item.id} path="${item.output_path}"`);
       } else {
         if (item.status === "cancelled") return;
-        console.warn(`[queue] fail id=${item.id} exit=${exitCode}`);
+        logger.warn(
+          `fail id=${item.id} exit=${exitCode}: ${stderrText.slice(0, 300)}`,
+        );
         if (
           stderrText.includes("403") ||
           stderrText.toLowerCase().includes("forbidden")
         ) {
-          console.log(`[queue] 403/forbidden, retrying with browser cookies`);
+          logger.log(`403/forbidden, retrying with browser cookies`);
           const retried = await this._retryWithBrowserCookies(item);
           if (retried) return;
         }
@@ -300,13 +298,10 @@ export class DownloadQueueManager {
         item.error = stderrText || "Download failed";
       }
     } catch (e) {
-      console.error(`[queue] error id=${item.id}:`, e);
+      logger.error(`error id=${item.id}: ${e}`);
       if (item.status === "cancelled") return;
       item.status = "failed";
       item.error = String(e);
-    } finally {
-      this.activeCount--;
-      this.tryProcess();
     }
   }
 }

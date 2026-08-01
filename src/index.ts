@@ -14,6 +14,7 @@ import {
   playlistsApi,
   playlistImportApi,
   playlistImportFromUrlApi,
+  playlistImportSpotifyApi,
   playlistCheckExistingApi,
   playlistRenameApi,
   playlistAddApi,
@@ -47,7 +48,9 @@ import {
   cookiesSigninApi,
   cookiesSigninStatusApi,
   cookiesSigninCancelApi,
+  cookiesVerifyApi,
 } from "@/api/server/routes/cookies";
+import { appVersionApi } from "@/api/server/routes/app";
 
 const logger = new Logger("SERVER");
 const playlistWatcher = new PlaylistWatcher(PLAYLISTS_DIR);
@@ -64,6 +67,7 @@ const server = serve({
     "/api/playlists": playlistsApi,
     "/api/playlists/import": playlistImportApi,
     "/api/playlists/import-from-url": playlistImportFromUrlApi,
+    "/api/playlists/import-spotify": playlistImportSpotifyApi,
     "/api/playlists/add": playlistAddApi,
     "/api/playlists/check-existing": playlistCheckExistingApi,
     "/api/playlists/:name": playlistGetApi,
@@ -90,9 +94,12 @@ const server = serve({
     "/api/ytdlp/version": ytdlpVersionApi,
     "/api/ytdlp/update": ytdlpUpdateApi,
 
+    "/api/app/version": appVersionApi,
+
     "/api/cookies": cookiesApi,
     "/api/cookies/detect": cookiesDetectApi,
     "/api/cookies/inspect": cookiesInspectApi,
+    "/api/cookies/verify": cookiesVerifyApi,
     "/api/cookies/signin": cookiesSigninApi,
     "/api/cookies/signin/status": cookiesSigninStatusApi,
     "/api/cookies/signin/cancel": cookiesSigninCancelApi,
@@ -110,9 +117,9 @@ logger.log(`started at ${server.url}`);
 logger.log(`data: ${DATA_DIR}`);
 logger.log(`cookies: ${COOKIES_FILE}`);
 
-Bun.spawn({
-  cmd: ["cmd", "/c", "start", "", server.url.toString()],
-  stdout: "ignore",
-  stderr: "ignore",
-  stdin: "ignore",
-});
+// Bun.spawn({
+//   cmd: ["cmd", "/c", "start", "", server.url.toString()],
+//   stdout: "ignore",
+//   stderr: "ignore",
+//   stdin: "ignore",
+// });

@@ -1,9 +1,18 @@
 import { dirname, resolve } from "path";
-import { mkdirSync } from "fs";
+import { existsSync, mkdirSync } from "fs";
 
 export const APP_DIR = process.cwd();
 
-export const SCRIPT_PATH = resolve(APP_DIR, "cookies_extract.py");
+export const APP_NAME = "HP YTdl UI";
+export const APP_VERSION = "1.2.1";
+export const APP_REPO = "HullPerse/HP-YTdl-UI";
+
+export const SCRIPT_PATH =
+  [
+    resolve(APP_DIR, "cookies_extract.py"),
+    resolve(APP_DIR, "src", "lib", "cookies_extract.py"),
+    resolve(APP_DIR, "dist", "cookies_extract.py"),
+  ].find((p) => existsSync(p)) || resolve(APP_DIR, "cookies_extract.py");
 export const DATA_DIR = resolve(APP_DIR, "data");
 export const PLAYLISTS_DIR = resolve(DATA_DIR, "playlists");
 export const DOWNLOADS_DIR = resolve(DATA_DIR, "downloads");
@@ -40,4 +49,19 @@ export const STANDARD_BROWSERS = [
   "chromium",
 ];
 
-export const AUTH_COOKIE_NAMES = new Set(["SAPISID", "SSID", "HSID", "SID"]);
+export const CORE_AUTH_COOKIES = ["SID", "SAPISID", "SSID", "HSID"];
+
+export const AUTH_COOKIE_NAMES = new Set([
+  "SAPISID",
+  "SSID",
+  "HSID",
+  "SID",
+  "APISID",
+  "SIDCC",
+  "LOGIN_INFO",
+  "__Secure-1PSID",
+  "__Secure-3PSID",
+  "__Secure-1PAPISID",
+  "__Secure-3PAPISID",
+  "__Secure-3PSIDCC",
+]);

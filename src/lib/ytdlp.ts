@@ -209,13 +209,21 @@ function findThumbnail(dir: string): string | undefined {
 
 // ── yt-dlp subprocess helpers ──────────────────────────────────────
 
-function extractorArgsCli(poTokenArg?: string): string {
+function extractorArgsCli(poTokenArg?: string, playerClient?: string): string {
   let args = "";
   if (poTokenArg) args += poTokenArg;
   const entries = Object.entries(EXTRACTOR_ARGS);
   const rest = entries
     .map(([site, opts]) => {
-      const parts = Object.entries(opts).map(([k, v]) => `${k}=${v.join(",")}`);
+      const parts = Object.entries(opts)
+        .filter(
+          ([k]) =>
+            !(site === "youtube" && k === "player_client" && playerClient),
+        )
+        .map(([k, v]) => `${k}=${v.join(",")}`);
+      if (site === "youtube" && playerClient) {
+        parts.push(`player_client=${playerClient}`);
+      }
       return `${site}:${parts.join(";")}`;
     })
     .join(" ");
@@ -223,14 +231,14 @@ function extractorArgsCli(poTokenArg?: string): string {
   return rest ? `${args} ${rest}` : args;
 }
 
-function extractVideoId(url: string): string | null {
+export function extractVideoId(url: string): string | null {
   const match = url.match(
     /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
   );
   return match?.[1] ?? null;
 }
 
-async function generatePoToken(videoId: string): Promise<string | null> {
+export async function generatePoToken(videoId: string): Promise<string | null> {
   if (!existsSync(BGUTIL_GENERATE_ONCE)) {
     logger.warn(`[pot] generate_once.js not found at ${BGUTIL_GENERATE_ONCE}`);
     return null;
@@ -263,7 +271,12 @@ async function generatePoToken(videoId: string): Promise<string | null> {
 
 export function ytdlp(
   args: string[],
-  opts?: { timeout?: number; env?: Record<string, string>; poToken?: string },
+  opts?: {
+    timeout?: number;
+    env?: Record<string, string>;
+    poToken?: string;
+    playerClient?: string;
+  },
 ): Bun.Subprocess {
   const binary = ensureYtdlpBinary();
   const poTokenArg = opts?.poToken
@@ -275,7 +288,7 @@ export function ytdlp(
     "--js-runtimes",
     "bun",
     "--extractor-args",
-    extractorArgsCli(poTokenArg),
+    extractorArgsCli(poTokenArg, opts?.playerClient),
     "--user-agent",
     USER_AGENT,
   ];
@@ -289,10 +302,13 @@ export function ytdlp(
 
 export function trySpawnYtdlp(
   args: string[],
-  poToken?: string,
+  opts?: { poToken?: string; playerClient?: string },
 ): Bun.Subprocess | null {
   try {
-    return ytdlp(args, poToken ? { poToken } : undefined);
+    return ytdlp(
+      args,
+      opts && (opts.poToken || opts.playerClient) ? opts : undefined,
+    );
   } catch {
     return null;
   }
@@ -345,6 +361,7 @@ export async function searchYoutube(
       try {
         const e = JSON.parse(line);
         const videoId = String(e.id || "");
+        const viewCount = e.view_count ? Number(e.view_count) : undefined;
         return {
           id: videoId,
           title: String(e.title || "Unknown"),
@@ -352,6 +369,7 @@ export async function searchYoutube(
           duration: e.duration ?? null,
           thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
           url: `https://www.youtube.com/watch?v=${videoId}`,
+          ...(viewCount !== undefined ? { views: viewCount } : {}),
         };
       } catch {
         return null;
@@ -393,7 +411,7 @@ async function spawnAndMonitor(
   onProgress?: (percent: number, speed: string, eta: string) => void,
   poToken?: string,
 ): Promise<void> {
-  const proc = trySpawnYtdlp(args, poToken);
+  const proc = trySpawnYtdlp(args, poToken ? { poToken } : undefined);
   if (!proc) throw new Error("yt-dlp not found or failed to start");
 
   let stderrText = "";
@@ -648,6 +666,66 @@ export async function importPlaylistFromUrl(
   return { name, count: tracks.length, path: "" };
 }
 
+export function parseSpotifyPlaylistId(url: string): string {
+  const m = url.trim().match(/open\.spotify\.com\/playlist\/([A-Za-z0-9]+)/);
+  return m ? m[1]! : "";
+}
+
+export async function importPlaylistFromSpotify(
+  url: string,
+): Promise<PlaylistImportResult & { tracks: string[] }> {
+  logger.log(`[playlist] import-spotify url="${url}"`);
+  const id = parseSpotifyPlaylistId(url);
+  if (!id) {
+    throw new Error("Not a valid Spotify playlist URL.");
+  }
+
+  const res = await fetch(`https://open.spotify.com/embed/playlist/${id}`, {
+    headers: { "User-Agent": "hp-ytdl-ui/1.0" },
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!res.ok) {
+    throw new Error(`Spotify request failed (HTTP ${res.status}).`);
+  }
+
+  const html = await res.text();
+  const m = html.match(
+    /<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/,
+  );
+  if (!m) throw new Error("Could not read playlist data from Spotify.");
+
+  let data: unknown;
+  try {
+    data = JSON.parse(m[1]!);
+  } catch {
+    throw new Error("Could not parse playlist data from Spotify.");
+  }
+
+  const entity = (data as any)?.props?.pageProps?.state?.data?.entity as
+    | { name?: string; title?: string; trackList?: unknown[] }
+    | undefined;
+  const trackList = Array.isArray(entity?.trackList) ? entity.trackList : [];
+
+  const tracks = trackList
+    .map((t) => {
+      const track = t as { subtitle?: string; title?: string };
+      const artist = String(track.subtitle ?? "").trim();
+      const title = String(track.title ?? "").trim();
+      if (!title) return "";
+      return artist ? `${artist} - ${title}` : title;
+    })
+    .filter(Boolean);
+
+  if (!tracks.length) {
+    throw new Error("This playlist has no tracks.");
+  }
+
+  const name = String(entity?.name ?? entity?.title ?? "Spotify Playlist").trim();
+
+  logger.log(`[playlist] spotify "${name}" with ${tracks.length} tracks`);
+  return { name, count: tracks.length, path: "", tracks };
+}
+
 export async function getYtdlpVersion(): Promise<{
   version: string;
   available: boolean;
@@ -708,4 +786,81 @@ export async function updateYtdlp(): Promise<{
   }
 }
 
+const VERIFY_URLS = [
+  "https://www.youtube.com/watch?v=kJQP7kiw5Fk",
+  "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+  "https://www.youtube.com/watch?v=jNQXAC9IVRw",
+];
 
+const SIGNIN_RE =
+  /sign in to confirm|sign in to continue|not a bot|captcha|exponential backoff|confirm you're not a bot|log in to continue|please sign in|--cookies-from-browser|sign in with your google account/i;
+
+const UNAVAILABLE_RE =
+  /video unavailable|private video|this video is not available|removed by the user|has been removed|not available in your country|available only in/i;
+
+export async function verifyCookies(
+  cookiesFile: string,
+  url?: string,
+): Promise<{
+  ok: boolean;
+  needs_signin: boolean;
+  inconclusive?: boolean;
+  detail: string;
+}> {
+  const targets = url?.trim() ? [url.trim()] : VERIFY_URLS;
+  for (const target of targets) {
+    try {
+      const proc = ytdlp(
+        [
+          target,
+          "--flat-playlist",
+          "--simulate",
+          "--no-warnings",
+          "--cookies",
+          cookiesFile,
+        ],
+        { timeout: 30 },
+      );
+      const [stdout, stderr] = await Promise.all([
+        new Response(proc.stdout as ReadableStream<Uint8Array>).text(),
+        new Response(proc.stderr as ReadableStream<Uint8Array>).text(),
+      ]);
+      const exitCode = await proc.exited;
+      const combined = (stdout + stderr).toLowerCase();
+
+      if (SIGNIN_RE.test(combined)) {
+        return {
+          ok: false,
+          needs_signin: true,
+          detail: "yt-dlp requires sign-in (bot check / login wall)",
+        };
+      }
+      if (exitCode === 0) {
+        return {
+          ok: true,
+          needs_signin: false,
+          detail: "Cookies accepted by yt-dlp",
+        };
+      }
+      if (UNAVAILABLE_RE.test(combined)) {
+        logger.warn(`verify: test video unavailable for ${target}, trying next`);
+        continue;
+      }
+      return {
+        ok: false,
+        needs_signin: false,
+        detail: (stderr || stdout).trim().slice(0, 300) || `exit ${exitCode}`,
+      };
+    } catch (e) {
+      logger.warn(`verify: error for ${target}: ${e}`);
+      continue;
+    }
+  }
+  return {
+    ok: false,
+    needs_signin: false,
+    inconclusive: true,
+    detail:
+      "Unable to verify - test videos unavailable. Your cookies may still be fine.",
+  };
+}

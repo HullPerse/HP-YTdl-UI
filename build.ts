@@ -19,6 +19,9 @@ const result = await Bun.build({
   sourcemap: "none",
 
   compile: {
+    windows: {
+      icon: "public/icon.ico",
+    },
     outfile: path.join(outdir, "ytdl.exe"),
   },
 
@@ -44,3 +47,5 @@ await copyFile(
 
 console.log("\nBuild complete.");
 console.log(`Executable: ${path.join(outdir, "ytdl.exe")}`);
+
+// --windows-icon=path/to/icon.ico

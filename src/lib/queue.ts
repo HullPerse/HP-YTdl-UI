@@ -5,25 +5,27 @@ import {
   getCookieBrowserTargets,
 } from "@/lib/utils";
 import { COOKIES_FILE, DOWNLOADS_DIR } from "@/config/paths";
-import { ytdlp, trySpawnYtdlp } from "@/lib/ytdlp";
+import { extractVideoId, generatePoToken, trySpawnYtdlp } from "@/lib/ytdlp";
 import { unlinkSync } from "fs";
 import PQueue from "p-queue";
 import Logger from "@/lib/logger";
 
 const logger = new Logger("QUEUE");
 
-let itemIdCounter = 0;
-
-function genId(): string {
-  return (++itemIdCounter).toString(36).padStart(6, "0");
-}
+const PROGRESS_TEMPLATE =
+  "download:[download] %(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress._percent_str)s %(progress._speed_str)s %(progress._eta_str)s %(progress.speed)s %(progress.eta)s";
 
 class DownloadQueueManager {
   items: QueueItemData[] = [];
   private queue: PQueue;
+  private itemIdCounter = 0;
 
   constructor(maxConcurrent = 2) {
     this.queue = new PQueue({ concurrency: maxConcurrent });
+  }
+
+  private genId(): string {
+    return (++this.itemIdCounter).toString(36).padStart(6, "0");
   }
 
   get maxConcurrent(): number {
@@ -47,7 +49,7 @@ class DownloadQueueManager {
     priority = 0,
   ): string {
     const item: QueueItemData = {
-      id: genId(),
+      id: this.genId(),
       url: params.url,
       filename: params.filename,
       fmt: params.fmt,
@@ -138,52 +140,106 @@ class DownloadQueueManager {
     return this.items.map((it) => ({ ...it }));
   }
 
-  private async _retryWithBrowserCookies(
+  private async _runWithCookies(
     item: QueueItemData,
+    opts: {
+      browser?: string;
+      profile?: string | null;
+      poToken?: string;
+      playerClient?: string;
+    },
   ): Promise<boolean> {
-    for (const [browser, profile] of getCookieBrowserTargets()) {
-      if (item.status === "cancelled") return false;
-      try {
-        const ext = item.fmt === "mp3" ? "mp3" : "mp4";
-        const outtmpl = item.output_path.replace(`.${ext}`, ".%(ext)s");
-        const args: string[] = [
-          item.url,
-          "-o",
-          outtmpl,
+    if (item.status === "cancelled") return false;
+    try {
+      const ext = item.fmt === "mp3" ? "mp3" : "mp4";
+      const outtmpl = item.output_path.replace(`.${ext}`, ".%(ext)s");
+      const args: string[] = [
+        item.url,
+        "-o",
+        outtmpl,
+        "--newline",
+        "--progress-template",
+        PROGRESS_TEMPLATE,
+        "--embed-metadata",
+      ];
+
+      if (opts.browser) {
+        args.push(
           "--cookies-from-browser",
-          profile ? `${browser}:${profile}` : browser,
-        ];
-        if (item.fmt === "mp3") {
-          args.push(
-            "-f",
-            "bestaudio/best",
-            "-x",
-            "--audio-format",
-            "mp3",
-            "--audio-quality",
-            "0",
-          );
-        } else {
-          args.push(
-            "-f",
-            `bestvideo[height<=${item.quality}]+bestaudio/best[height<=${item.quality}]`,
-            "--merge-output-format",
-            "mp4",
-          );
-        }
-        const proc = ytdlp(args);
-        await proc.exited;
-        const exitCode = await proc.exited;
-        if (exitCode === 0) {
-          item.status = "completed";
-          item.progress = 100;
-          return true;
-        }
-      } catch {
-        continue;
+          opts.profile ? `${opts.browser}:${opts.profile}` : opts.browser,
+        );
+      } else if (await Bun.file(COOKIES_FILE).exists()) {
+        args.push("--cookies", COOKIES_FILE);
       }
+
+      if (item.fmt === "mp3") {
+        args.push(
+          "-f",
+          "bestaudio/best",
+          "-x",
+          "--audio-format",
+          "mp3",
+          "--audio-quality",
+          "0",
+        );
+      } else {
+        args.push(
+          "-f",
+          `bestvideo[height<=${item.quality}]+bestaudio/best[height<=${item.quality}]`,
+          "--merge-output-format",
+          "mp4",
+        );
+      }
+
+      const proc = trySpawnYtdlp(args, {
+        poToken: opts.poToken,
+        playerClient: opts.playerClient,
+      });
+      if (!proc) return false;
+
+      const stderrReader = (
+        proc.stderr as ReadableStream<Uint8Array>
+      ).getReader();
+      const decoder = new TextDecoder();
+      let stderrText = "";
+
+      try {
+        while (true) {
+          const { done, value } = await stderrReader.read();
+          if (done) break;
+          const text = decoder.decode(value, { stream: true });
+          stderrText += text;
+          for (const line of text.split("\n")) {
+            const parsed = parseProgressLine(line);
+            if (parsed) {
+              if (parsed.downloaded_bytes !== undefined)
+                item.downloaded_bytes = parsed.downloaded_bytes;
+              if (parsed.total_bytes !== undefined)
+                item.total_bytes = parsed.total_bytes;
+              if (parsed.speed_bytes !== undefined)
+                item.speed = parsed.speed_bytes;
+              if (parsed.eta_seconds !== undefined) item.eta = parsed.eta_seconds;
+              item.progress = parsed.percent;
+            }
+          }
+        }
+      } finally {
+        stderrReader.releaseLock();
+      }
+
+      const exitCode = await proc.exited;
+      if (exitCode === 0) {
+        item.status = "completed";
+        item.progress = 100;
+        logger.log(`complete id=${item.id} (retry) path="${item.output_path}"`);
+        return true;
+      }
+      logger.warn(`retry fail id=${item.id} exit=${exitCode}: ${stderrText.slice(0, 200)}`);
+      return false;
+    } catch (e) {
+      logger.warn(`retry error id=${item.id}: ${e}`);
+      return false;
     }
-    return false;
   }
 
   private async _processItem(item: QueueItemData): Promise<void> {
@@ -214,7 +270,8 @@ class DownloadQueueManager {
         "-o",
         outtmpl,
         "--newline",
-        "--progress",
+        "--progress-template",
+        PROGRESS_TEMPLATE,
         "--embed-metadata",
       ];
 
@@ -263,11 +320,13 @@ class DownloadQueueManager {
           for (const line of text.split("\n")) {
             const parsed = parseProgressLine(line);
             if (parsed) {
-              item.downloaded_bytes = Math.round(
-                (parsed.percent / 100) * (item.total_bytes || 100_000_000),
-              );
-              item.total_bytes = item.total_bytes || 100_000_000;
-              item.speed = parseFloat(parsed.speed) || 0;
+              if (parsed.downloaded_bytes !== undefined)
+                item.downloaded_bytes = parsed.downloaded_bytes;
+              if (parsed.total_bytes !== undefined)
+                item.total_bytes = parsed.total_bytes;
+              if (parsed.speed_bytes !== undefined)
+                item.speed = parsed.speed_bytes;
+              if (parsed.eta_seconds !== undefined) item.eta = parsed.eta_seconds;
               item.progress = parsed.percent;
             }
           }
@@ -286,14 +345,41 @@ class DownloadQueueManager {
         logger.warn(
           `fail id=${item.id} exit=${exitCode}: ${stderrText.slice(0, 300)}`,
         );
-        if (
-          stderrText.includes("403") ||
-          stderrText.toLowerCase().includes("forbidden")
-        ) {
-          logger.log(`403/forbidden, retrying with browser cookies`);
-          const retried = await this._retryWithBrowserCookies(item);
-          if (retried) return;
+
+        const lower = stderrText.toLowerCase();
+        const botCheck =
+          /sign in to confirm|sign in to continue|not a bot|captcha|exponential backoff|403|forbidden/.test(
+            lower,
+          );
+
+        if (botCheck) {
+          logger.log(`bot-check/sign-in detected for id=${item.id}, retrying`);
+
+          // 1) live browser cookies (default client)
+          for (const [browser, profile] of getCookieBrowserTargets()) {
+            if (item.status === "cancelled") return;
+            if (await this._runWithCookies(item, { browser, profile })) return;
+          }
+
+          // 2) saved cookies + PO token + tv client fallback
+          if (item.status !== "cancelled") {
+            const videoId = extractVideoId(item.url);
+            const po = videoId ? await generatePoToken(videoId) : null;
+            if (po) {
+              const ok = await this._runWithCookies(item, {
+                poToken: po,
+                playerClient: "tv",
+              });
+              if (ok) return;
+            }
+          }
+
+          if (item.status === "cancelled") return;
+          item.status = "failed";
+          item.error = stderrText || "Download failed (sign-in / bot check)";
+          return;
         }
+
         item.status = "failed";
         item.error = stderrText || "Download failed";
       }

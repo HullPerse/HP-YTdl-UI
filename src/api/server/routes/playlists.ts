@@ -14,9 +14,10 @@ import {
   cleanTrackLine,
   findPlaylistFile,
   parseYoutubeTitle,
+  renderFilenameTemplate,
   sanitizeFilename,
 } from "@/lib/utils";
-import { importPlaylist, importPlaylistFromUrl, ytdlp } from "@/lib/ytdlp";
+import { importPlaylist, importPlaylistFromSpotify, importPlaylistFromUrl, ytdlp } from "@/lib/ytdlp";
 import Logger from "@/lib/logger";
 import HttpResponse from "@/api/response";
 import { playlistCache } from "@/lib/cache";
@@ -140,6 +141,36 @@ export const playlistImportFromUrlApi = {
   },
 };
 
+export const playlistImportSpotifyApi = {
+  async POST(req: Request) {
+    const body = (await req.json()) as PlaylistImportBody;
+    if (!body.url?.trim()) return HttpResponse.error("URL required", 400);
+
+    try {
+      logger.log(`import-spotify url="${body.url}"`);
+
+      const result = await importPlaylistFromSpotify(body.url.trim());
+
+      const playlistPath = join(
+        PLAYLISTS_DIR,
+        `${sanitizeFilename(result.name)}.csv`,
+      );
+      writeFileSync(playlistPath, result.tracks.join("\n"), "utf-8");
+
+      playlistCache.delete("all");
+      logger.log(`imported spotify "${result.name}" with ${result.count} tracks`);
+      return HttpResponse.json({
+        name: result.name,
+        count: result.count,
+        path: playlistPath,
+      });
+    } catch (e) {
+      logger.error(`import-spotify failed: ${e}`);
+      return HttpResponse.error(String(e));
+    }
+  },
+};
+
 export const playlistCheckExistingApi = {
   async POST(req: Request) {
     const body = (await req.json()) as PlaylistCheckBody;
@@ -147,17 +178,17 @@ export const playlistCheckExistingApi = {
 
     for (let i = 0; i < body.tracks.length; i++) {
       const parsed = parseYoutubeTitle(body.tracks[i]!);
-      let name = body.template
-        .replace("{artist}", parsed.artist)
-        .replace("{title}", parsed.title)
-        .replace("{misc}", parsed.misc ? ` [${parsed.misc}]` : "")
-        .replace("{channel}", "")
-        .replace("{id}", "")
-        .replace("{ext}", "")
-        .replace("{playlist}", "")
-        .replace("{quality}", "")
-        .replace("{source_title}", body.tracks[i]!);
-      name = name.replace(/\s+/g, " ").trim();
+      const name = renderFilenameTemplate(body.template, {
+        artist: parsed.artist,
+        title: parsed.title,
+        misc: parsed.misc ? ` [${parsed.misc}]` : "",
+        channel: "",
+        id: "",
+        ext: "",
+        playlist: "",
+        quality: "",
+        source_title: body.tracks[i]!,
+      });
       const safe = sanitizeFilename(name);
 
       for (const ext of [".mp3", ".mp4", ".m4a", ".webm"]) {
@@ -182,7 +213,18 @@ export const playlistRenameApi = {
     if (!existsSync(playlistDir))
       return HttpResponse.error("Playlist download directory not found", 404);
 
-    logger.log(`rename playlist="${name}"`);
+    let body: { template?: string; dry_run?: boolean } = {};
+    try {
+      body = (await req.json()) as typeof body;
+    } catch {
+      /* no body */
+    }
+    const template = body.template?.trim() || "{artist} - {title}{misc}";
+    const dryRun = !!body.dry_run;
+
+    logger.log(
+      `rename playlist="${name}" dry_run=${dryRun} template="${template}"`,
+    );
 
     const files = readdirSync(PLAYLISTS_DIR).sort();
     let pl: { name: string; tracks: string[]; count: number } | undefined;
@@ -203,30 +245,61 @@ export const playlistRenameApi = {
     const dlFiles = readdirSync(playlistDir)
       .map((f) => join(playlistDir, f))
       .filter((f) => statSync(f).isFile())
-      .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+      .sort((a, b) => statSync(a).mtimeMs - statSync(b).mtimeMs);
 
     const renamed: { old: string; new: string }[] = [];
+    const skipped: { file: string; reason: string }[] = [];
     const errors: string[] = [];
 
     for (let i = 0; i < dlFiles.length; i++) {
       const f = dlFiles[i]!;
+      const ext = extname(f);
+      const currentBase = basename(f, ext);
       if (i >= pl.tracks.length) {
         errors.push(`${basename(f)}: no playlist track at index ${i}`);
         continue;
       }
       const parsed = parseYoutubeTitle(pl.tracks[i]!);
-      const newName = `${parsed.filename}${extname(f)}`;
-      const newPath = join(playlistDir, newName);
-      if (existsSync(newPath)) {
-        errors.push(`${basename(f)}: target ${newName} already exists`);
+      const expectedName = sanitizeFilename(
+        renderFilenameTemplate(template, {
+          artist: parsed.artist,
+          title: parsed.title,
+          misc: parsed.misc ? ` [${parsed.misc}]` : "",
+          channel: "",
+          id: "",
+          ext: ext.slice(1),
+          playlist: name,
+          quality: "",
+          source_title: pl.tracks[i]!,
+        }),
+      );
+      if (currentBase === expectedName) {
+        skipped.push({ file: basename(f), reason: "already matches" });
         continue;
       }
-      renameSync(f, newPath);
-      renamed.push({ old: basename(f), new: newName });
+      const newPath = join(playlistDir, `${expectedName}${ext}`);
+      if (existsSync(newPath)) {
+        errors.push(
+          `${basename(f)}: target ${expectedName}${ext} already exists`,
+        );
+        continue;
+      }
+      renamed.push({ old: basename(f), new: `${expectedName}${ext}` });
+      if (!dryRun) {
+        renameSync(f, newPath);
+      }
     }
 
-    logger.log(`renamed ${renamed.length} files (${errors.length} errors)`);
-    return HttpResponse.json({ renamed, errors, total: dlFiles.length });
+    logger.log(
+      `renamed ${renamed.length} files (${skipped.length} skipped, ${errors.length} errors)`,
+    );
+    return HttpResponse.json({
+      renamed,
+      errors,
+      skipped,
+      total: dlFiles.length,
+      dry_run: dryRun,
+    });
   },
 };
 

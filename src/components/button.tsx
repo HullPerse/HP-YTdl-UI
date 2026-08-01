@@ -1,6 +1,7 @@
 import { cn } from "@/lib/cn";
 import { cva, type VariantProps } from "class-variance-authority";
-import type { ComponentProps } from "react";
+import { Loader2 } from "lucide-react";
+import { Children, type ComponentProps } from "react";
 
 const buttonVariants = cva(
   "inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm text-text disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none border cursor-pointer disabled:cursor-not-allowed font-extrabold transition-all-[100ms, ease-in-out] hover:bg-white/5 active:bg-white/10 transition-all duration-150 overflow-hidden",
@@ -38,17 +39,23 @@ function Button({
   variant,
   size,
   asChild = false,
+  loading = false,
+  disabled,
+  children,
   ...props
 }: ComponentProps<"button"> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean;
+    loading?: boolean;
   }) {
   const Comp = asChild ? "span" : "button";
 
   return (
     <Comp
       data-slot="button"
+      disabled={loading || disabled}
       className={cn(buttonVariants({ variant, size, className }))}
+      children={loading ? <Loader2 className="size-4 animate-spin" /> : children}
       {...props}
     />
   );

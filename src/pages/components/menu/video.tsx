@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import type { SearchResult, QueueItemData } from "@/types";
 import ImageComponent from "@/components/image";
+import { parseYoutubeTitle, renderFilenameTemplate } from "@/lib/filename";
 
 const TEMPLATE_KEY = "filenameTemplate";
 
@@ -54,6 +55,7 @@ function VideoPage({
   );
   const [queuedId, setQueuedId] = useState<string | null>(null);
   const [queueStatus, setQueueStatus] = useState<string>("");
+  const [pendingUrl, setPendingUrl] = useState<string | null>(null);
   const [conflictItem, setConflictItem] = useState<QueueItemData | null>(null);
   const [showPreview, setShowPreview] = useState(false);
 
@@ -143,6 +145,16 @@ function VideoPage({
     },
   });
 
+  const cardQueueMutation = useMutation({
+    mutationFn: (body: Record<string, unknown>) =>
+      fetch("/api/queue/add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }).then((r) => r.json()),
+    onSettled: () => setPendingUrl(null),
+  });
+
   function selectResult(r: SearchResult) {
     setSelected(r);
     setShowPreview(true);
@@ -170,26 +182,19 @@ function VideoPage({
       .catch(() => {});
   }
 
-  function getFilename(): string {
-    const parts = selected!.title.split(" - ");
-    const artist = parts.length > 1 ? parts.slice(0, -1).join(" - ") : "";
-    const title = parts.length > 1 ? parts[parts.length - 1]! : selected!.title;
-    const safeTitle = title.replace(/[\\/:*?"<>|]/g, "_");
-    const safeArtist = artist.replace(/[\\/:*?"<>|]/g, "_");
-    return (
-      template
-        .replace("{artist}", safeArtist)
-        .replace("{title}", safeTitle)
-        .replace("{misc}", "")
-        .replace("{channel}", selected!.channel || "")
-        .replace("{id}", selected!.id)
-        .replace("{ext}", format === "audio" ? "mp3" : "mp4")
-        .replace("{playlist}", "")
-        .replace("{quality}", quality)
-        .replace("{source_title}", selected!.title)
-        .replace(/\s+/g, " ")
-        .trim() || "untitled"
-    );
+  function getFilename(r: SearchResult): string {
+    const parsed = parseYoutubeTitle(r.title);
+    return renderFilenameTemplate(template, {
+      artist: parsed.artist,
+      title: parsed.title,
+      misc: parsed.misc ? ` [${parsed.misc}]` : "",
+      channel: r.channel || "",
+      id: r.id,
+      ext: format === "audio" ? "mp3" : "mp4",
+      playlist: playlistName || "",
+      quality,
+      source_title: r.title,
+    });
   }
 
   function queueDownload() {
@@ -197,7 +202,20 @@ function VideoPage({
     setQueueStatus("Adding...");
     queueMutation.mutate({
       url: selected.url,
-      filename: getFilename(),
+      filename: getFilename(selected),
+      fmt: format === "audio" ? "mp3" : "mp4",
+      quality,
+      playlist: playlistName || "",
+      output_dir: localStorage.getItem("outputDir") || "",
+      include_thumbnail: false,
+    });
+  }
+
+  function queueDownloadFor(r: SearchResult) {
+    setPendingUrl(r.url);
+    cardQueueMutation.mutate({
+      url: r.url,
+      filename: getFilename(r),
       fmt: format === "audio" ? "mp3" : "mp4",
       quality,
       playlist: playlistName || "",
@@ -264,14 +282,29 @@ function VideoPage({
                 </span>
                 <span className="text-xs text-muted line-clamp-1">
                   {item.channel}
+                  {item.views != null && (
+                    <span> · {formatViews(item.views)} views</span>
+                  )}
                 </span>
-                <Button
-                  variant="accent"
-                  className="mt-auto h-8 w-full"
-                  onClick={() => selectResult(item)}
-                >
-                  Select
-                </Button>
+                <div className="flex flex-row gap-1 mt-auto">
+                  <Button
+                    variant="accent"
+                    className="h-8 flex-1"
+                    onClick={() => selectResult(item)}
+                  >
+                    Select
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8"
+                    onClick={() => queueDownloadFor(item)}
+                    loading={pendingUrl === item.url}
+                    title="Download this result directly"
+                  >
+                    <Download className="size-3" />
+                  </Button>
+                </div>
               </section>
             </div>
           ))}
@@ -392,7 +425,8 @@ function VideoPage({
                   })() as keyof typeof buttonVariants
                 }
                 onClick={queueDownload}
-                disabled={!!queuedId || queueMutation.isPending}
+                disabled={!!queuedId}
+                loading={queueMutation.isPending}
                 title={
                   queuedId && queueStatus === "Done!"
                     ? "Downloaded"
@@ -416,3 +450,10 @@ function VideoPage({
 }
 
 export default VideoPage;
+
+function formatViews(views: number): string {
+  if (views >= 1_000_000_000) return `${(views / 1_000_000_000).toFixed(1)}B`;
+  if (views >= 1_000_000) return `${(views / 1_000_000).toFixed(1)}M`;
+  if (views >= 1_000) return `${(views / 1_000).toFixed(0)}K`;
+  return String(views);
+}

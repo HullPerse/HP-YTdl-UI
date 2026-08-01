@@ -12,6 +12,10 @@ function PlaylistSettings() {
   const [editing, setEditing] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameResult, setRenameResult] = useState("");
+  const [renameTemplate, setRenameTemplate] = useState(
+    "{artist} - {title}{misc}",
+  );
+  const [renameDryRun, setRenameDryRun] = useState(true);
   const [importUrl, setImportUrl] = useState("");
   const [importName, setImportName] = useState("");
   const [importing, setImporting] = useState(false);
@@ -27,12 +31,17 @@ function PlaylistSettings() {
   const playlists = Array.isArray(data) ? data : [];
 
   const importMutation = useMutation({
-    mutationFn: (body: { url: string; name: string }) =>
-      fetch("/api/playlists/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      }).then((r) => r.json()),
+    mutationFn: (body: { url: string; name: string }) => {
+      const isSpotify = /open\.spotify\.com\//.test(body.url);
+      return fetch(
+        isSpotify ? "/api/playlists/import-spotify" : "/api/playlists/import",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(isSpotify ? { url: body.url } : body),
+        },
+      ).then((r) => r.json());
+    },
     onSuccess: (d: { detail?: string; count?: number; name?: string }) => {
       if (d.detail) {
         setImportResult(`Error: ${d.detail}`);
@@ -58,15 +67,33 @@ function PlaylistSettings() {
     try {
       const res = await fetch(
         `/api/rename/playlist/${encodeURIComponent(selected)}`,
-        { method: "POST" },
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            template: renameTemplate,
+            dry_run: renameDryRun,
+          }),
+        },
       );
       const d = await res.json();
+      if (d.detail) {
+        setRenameResult(`Error: ${d.detail}`);
+        return;
+      }
       const lines = [
         ...(d.renamed || []).map(
           (r: { old: string; new: string }) => `${r.old} → ${r.new}`,
         ),
+        ...(d.skipped || []).map(
+          (s: { file: string; reason: string }) =>
+            `(skip) ${s.file} — ${s.reason}`,
+        ),
         ...(d.errors || []).map((e: string) => `Error: ${e}`),
       ];
+      if (d.dry_run) {
+        lines.unshift(`[preview] ${lines.length} file(s) to rename`);
+      }
       setRenameResult(lines.join("\n") || "Nothing to rename");
     } catch (e) {
       setRenameResult(String(e));
@@ -91,7 +118,7 @@ function PlaylistSettings() {
             <Input
               value={importUrl}
               onChange={(e) => setImportUrl(e.target.value)}
-              placeholder="YouTube playlist URL"
+              placeholder="YouTube or Spotify playlist URL"
               className="flex-1"
             />
             <Button variant="outline" size="sm" onClick={importFromClipboard}>
@@ -147,14 +174,41 @@ function PlaylistSettings() {
               Edit
             </Button>
           </div>
-          <Button
-            variant="accent"
-            size="sm"
-            onClick={renameFiles}
-            disabled={renaming || !selected}
-          >
-            {renaming ? "Renaming..." : "Rename Files"}
-          </Button>
+          <Input
+            value={renameTemplate}
+            onChange={(e) => setRenameTemplate(e.target.value)}
+            placeholder="Filename template, e.g. {artist} - {title}{misc}"
+          />
+          <div className="flex flex-row gap-2">
+            <Button
+              variant="accent"
+              size="sm"
+              onClick={renameFiles}
+              disabled={renaming || !selected}
+            >
+              {renaming ? "Checking..." : "Preview Renames"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setRenameDryRun(false);
+                renameFiles();
+              }}
+              disabled={renaming || !selected}
+              title="Apply renames immediately"
+            >
+              Apply Renames
+            </Button>
+            <label className="flex flex-row items-center gap-1 text-xs text-muted ml-auto">
+              <input
+                type="checkbox"
+                checked={renameDryRun}
+                onChange={(e) => setRenameDryRun(e.target.checked)}
+              />
+              Preview only
+            </label>
+          </div>
           {renameResult && (
             <pre className="text-xs text-muted whitespace-pre-wrap max-h-40 overflow-y-auto">
               {renameResult}

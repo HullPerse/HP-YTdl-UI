@@ -7,6 +7,8 @@ import { ClipboardPaste, Search, Settings, X } from "lucide-react";
 import VideoPage from "./components/menu/video";
 import PlaylistPage from "./components/menu/playlist";
 import QueuePage from "./components/menu/queue";
+import { useQueueItems } from "@/lib/useQueueItems";
+import AppVersionBadge from "@/components/version";
 
 const RECENT_KEY = "recentSearches";
 
@@ -25,6 +27,11 @@ function MenuPage({ setSettings }: { setSettings: (value: boolean) => void }) {
   const [selectedPlaylist, setSelectedPlaylist] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
+  const { items: queueItems, connected: queueConnected } = useQueueItems();
+
+  const activeQueueCount = queueItems.filter(
+    (i) => i.status === "waiting" || i.status === "downloading",
+  ).length;
 
   const { data } = useQuery<PlaylistInfo[]>({
     queryKey: ["playlists"],
@@ -156,6 +163,7 @@ function MenuPage({ setSettings }: { setSettings: (value: boolean) => void }) {
           </select>
         )}
 
+        <AppVersionBadge />
         <Button
           variant="outline"
           size="icon"
@@ -169,14 +177,16 @@ function MenuPage({ setSettings }: { setSettings: (value: boolean) => void }) {
       <section className="p-1 flex flex-row gap-1 w-full items-center border-b-2 border-border shrink-0">
         {menuTabs.map((tab) => {
           const isActive = currentTab === tab;
-          const title = tab.charAt(0).toUpperCase() + tab.slice(1);
+          const title =
+            tab === "queue" && activeQueueCount > 0
+              ? `Queue (${activeQueueCount})`
+              : tab.charAt(0).toUpperCase() + tab.slice(1);
           return (
             <Button
               key={tab}
               variant={isActive ? "accent" : "outline"}
               onClick={() => {
                 setCurrentTab(tab);
-                setValue("");
                 setShowRecent(false);
               }}
               className="h-10 w-20"
@@ -189,13 +199,15 @@ function MenuPage({ setSettings }: { setSettings: (value: boolean) => void }) {
       </section>
 
       <section className="flex-1 overflow-y-auto">
-        {currentTab === "video" && (
+        <div className={currentTab === "video" ? "" : "hidden"}>
           <VideoPage query={value} searchKey={searchKey} />
-        )}
-        {currentTab === "playlist" && (
+        </div>
+        <div className={currentTab === "playlist" ? "" : "hidden"}>
           <PlaylistPage selectedPlaylist={selectedPlaylist} />
-        )}
-        {currentTab === "queue" && <QueuePage />}
+        </div>
+        <div className={currentTab === "queue" ? "" : "hidden"}>
+          <QueuePage items={queueItems} connected={queueConnected} />
+        </div>
       </section>
     </main>
   );

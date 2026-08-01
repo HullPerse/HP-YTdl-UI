@@ -8,6 +8,7 @@ export interface SearchResult {
   duration: number | null;
   thumbnail: string;
   url: string;
+  views?: number;
 }
 
 export interface ParsedTitle {
@@ -176,7 +177,17 @@ export interface CookieInspectResult {
   total_cookies?: number;
   domains?: string[];
   auth_cookies_present?: string[];
+  missing_auth?: string[];
   has_all_auth?: boolean;
+  age_ms?: number;
+}
+
+export interface CookieVerifyResult {
+  ok: boolean;
+  needs_signin: boolean;
+  inconclusive?: boolean;
+  detail: string;
+  error?: string;
 }
 
 export interface YtdlpVersionResult {

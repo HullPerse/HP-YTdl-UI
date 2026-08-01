@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/button";
 import ConflictModal from "@/components/conflict";
 import {
@@ -31,23 +31,14 @@ function StatusIcon({ status }: { status: string }) {
   return <Icon className="size-3" />;
 }
 
-function QueuePage() {
-  const [items, setItems] = useState<QueueItemData[]>([]);
-  const [connected, setConnected] = useState(false);
-
-  useEffect(() => {
-    const es = new EventSource("/api/queue/progress");
-    es.onopen = () => setConnected(true);
-    es.onmessage = (e) => {
-      try {
-        setItems(JSON.parse(e.data));
-      } catch {
-        /* ignore */
-      }
-    };
-    es.onerror = () => setConnected(false);
-    return () => es.close();
-  }, []);
+function QueuePage({
+  items,
+  connected,
+}: {
+  items: QueueItemData[];
+  connected: boolean;
+}) {
+  const [removingId, setRemovingId] = useState<string | null>(null);
 
   const activeCount = items.filter(
     (i) => i.status === "waiting" || i.status === "downloading",
@@ -80,6 +71,16 @@ function QueuePage() {
       }),
   });
 
+  async function removeItem(id: string) {
+    setRemovingId(id);
+    try {
+      await removeMutation.mutateAsync(id);
+    } catch {
+      /* ignore */
+    }
+    setRemovingId(null);
+  }
+
   return (
     <div className="flex flex-col p-2 gap-1">
       <div className="flex flex-row items-center justify-between border-b border-border pb-1 mb-1">
@@ -99,6 +100,7 @@ function QueuePage() {
             variant="ghost"
             size="sm"
             onClick={() => clearMutation.mutate()}
+            loading={clearMutation.isPending}
           >
             <X className="size-3" /> Clear
           </Button>
@@ -152,8 +154,11 @@ function QueuePage() {
             {item.status === "downloading" && (
               <p className="text-xs text-muted">
                 {item.progress.toFixed(1)}%
+                {item.downloaded_bytes > 0 && item.total_bytes > 0
+                  ? ` · ${formatBytes(item.downloaded_bytes)} / ${formatBytes(item.total_bytes)}`
+                  : ""}
                 {item.speed > 0 && ` · ${formatSpeed(item.speed)}`}
-                {item.eta > 0 && ` · ETA ${item.eta}s`}
+                {item.eta > 0 && ` · ETA ${formatEta(item.eta)}`}
               </p>
             )}
           </div>
@@ -161,8 +166,9 @@ function QueuePage() {
             variant="error"
             size="icon-sm"
             className="size-7"
-            onClick={() => removeMutation.mutate(item.id)}
+            onClick={() => removeItem(item.id)}
             disabled={item.status === "completed"}
+            loading={removingId === item.id}
           >
             <Trash2 className="size-3" />
           </Button>
@@ -196,6 +202,20 @@ function formatSpeed(speed: number): string {
   if (speed > 1_000_000) return `${(speed / 1_000_000).toFixed(1)} MB/s`;
   if (speed > 1_000) return `${(speed / 1_000).toFixed(0)} KB/s`;
   return `${speed.toFixed(0)} B/s`;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
+  if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`;
+  if (bytes >= 1_000) return `${(bytes / 1_000).toFixed(0)} KB`;
+  return `${bytes} B`;
+}
+
+function formatEta(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds));
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  return m > 0 ? `${m}m ${rem}s` : `${rem}s`;
 }
 
 function escapeHtml(s: string): string {

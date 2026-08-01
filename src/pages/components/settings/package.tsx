@@ -3,8 +3,21 @@ import { Button } from "@/components/button";
 import { Loader2 } from "lucide-react";
 import type { YtdlpVersionResult, YtdlpUpdateResult } from "@/types";
 
+interface AppVersionInfo {
+  current: string;
+  latest: string | null;
+  release_url: string | null;
+  update_available: boolean;
+}
+
 function PackageSettings() {
   const queryClient = useQueryClient();
+
+  const { data: appInfo, isLoading: appLoading } = useQuery<AppVersionInfo>({
+    queryKey: ["app-version"],
+    queryFn: () => fetch("/api/app/version").then((r) => r.json()),
+    staleTime: 60_000,
+  });
 
   const { data, isLoading } = useQuery<YtdlpVersionResult>({
     queryKey: ["ytdlp-version"],
@@ -22,6 +35,47 @@ function PackageSettings() {
 
   return (
     <div className="flex flex-col gap-4">
+      <Section title="App Version">
+        {appLoading ? (
+          <p className="text-muted text-sm">
+            <Loader2 className="size-4 inline animate-spin" /> Loading...
+          </p>
+        ) : appInfo ? (
+          <div className="text-sm space-y-1">
+            <p>
+              Installed: <span className="font-bold">v{appInfo.current}</span>
+            </p>
+            <p>
+              Latest:{" "}
+              <span className="font-bold">
+                {appInfo.latest ? `v${appInfo.latest}` : "N/A"}
+              </span>
+            </p>
+            {appInfo.update_available && appInfo.latest && appInfo.release_url ? (
+              <p className="text-error">
+                Update available!{" "}
+                <a
+                  href={appInfo.release_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline"
+                >
+                  Download v{appInfo.latest}
+                </a>
+              </p>
+            ) : appInfo.latest ? (
+              <p className="text-success">You're up to date</p>
+            ) : (
+              <p className="text-muted text-xs">
+                Couldn't reach GitHub — latest version unknown.
+              </p>
+            )}
+          </div>
+        ) : (
+          <p className="text-error text-sm">Failed to load version info</p>
+        )}
+      </Section>
+
       <Section title="yt-dlp Version">
         {isLoading ? (
           <p className="text-muted text-sm">
@@ -58,7 +112,7 @@ function PackageSettings() {
             onClick={() =>
               queryClient.invalidateQueries({ queryKey: ["ytdlp-version"] })
             }
-            disabled={isLoading}
+            loading={isLoading}
           >
             Check for Updates
           </Button>
@@ -66,9 +120,10 @@ function PackageSettings() {
             variant="accent"
             size="sm"
             onClick={() => updateMutation.mutate()}
-            disabled={updateMutation.isPending || data?.frozen}
+            loading={updateMutation.isPending}
+            disabled={!!data?.frozen}
           >
-            {updateMutation.isPending ? "Updating..." : "Update yt-dlp"}
+            Update yt-dlp
           </Button>
         </div>
 

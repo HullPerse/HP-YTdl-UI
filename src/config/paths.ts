@@ -4,7 +4,7 @@ import { existsSync, mkdirSync } from "fs";
 export const APP_DIR = process.cwd();
 
 export const APP_NAME = "HP YTdl UI";
-export const APP_VERSION = "1.2.1";
+export const APP_VERSION = "1.2.3";
 export const APP_REPO = "HullPerse/HP-YTdl-UI";
 
 export const SCRIPT_PATH =

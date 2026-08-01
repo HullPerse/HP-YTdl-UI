@@ -115,7 +115,7 @@ function ensureYtdlpBinary(): string {
 let _ffmpegChecked = false;
 let _ffmpegAvailable = false;
 
-async function checkFfmpeg(): Promise<boolean> {
+export async function checkFfmpeg(): Promise<boolean> {
   if (_ffmpegChecked) return _ffmpegAvailable;
   _ffmpegChecked = true;
   try {

@@ -7,12 +7,15 @@ import Logger from "@/lib/logger";
 
 const logger = new Logger("WATCHER");
 
+const POLL_INTERVAL = 5000;
+
 export default class PlaylistWatcher {
   private listeners = new Set<Listener>();
   private watcher: FSWatcher | null = null;
   private debounce: Timer | null = null;
   private initialized = false;
   private pollingTimer: Timer | null = null;
+  private lastSignature = "";
 
   constructor(private readonly directory: string) {}
 
@@ -21,29 +24,29 @@ export default class PlaylistWatcher {
     if (this.initialized) return;
 
     this.initialized = true;
+    this.lastSignature = this.getSignature();
 
     try {
       this.watcher = watch(this.directory, (event, filename) => {
-        if (
-          !filename ||
-          ![".csv", ".txt"].includes(extname(filename).toLowerCase())
-        ) {
-          return;
-        }
+        logger.log(`${event}: ${filename ?? "(unknown)"}`);
 
-        logger.log(`${event}: ${filename}`);
-
+        this.lastSignature = this.getSignature();
         this.notify();
       });
 
       logger.log(`watching ${this.directory}`);
     } catch (error) {
       logger.error(`fs.watch failed, using polling: ${error}`);
-
-      this.pollingTimer = setInterval(() => {
-        this.notify();
-      }, 3000);
     }
+
+    // safety net: detect add/remove/modify even if fs.watch silently misses
+    // events (e.g. on Windows deletions may arrive with a null filename)
+    this.pollingTimer = setInterval(() => {
+      const sig = this.getSignature();
+      if (sig === this.lastSignature) return;
+      this.lastSignature = sig;
+      this.notify();
+    }, POLL_INTERVAL);
 
     process.once("exit", this.stop);
   };

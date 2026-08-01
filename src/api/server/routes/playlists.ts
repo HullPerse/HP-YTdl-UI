@@ -12,6 +12,7 @@ import { COOKIES_FILE, DOWNLOADS_DIR, PLAYLISTS_DIR } from "@/config/paths";
 import type { PlaylistCheckBody, PlaylistImportBody } from "@/types";
 import {
   cleanTrackLine,
+  findPlaylistFile,
   parseYoutubeTitle,
   sanitizeFilename,
 } from "@/lib/utils";
@@ -22,7 +23,7 @@ import { playlistCache } from "@/lib/cache";
 
 const logger = new Logger("PLAYLISTS");
 
-async function fetchPlaylistTracks(url: string): Promise<string[]> {
+export async function fetchPlaylistTracks(url: string): Promise<string[]> {
   try {
     const proc = ytdlp([
       url,
@@ -232,8 +233,8 @@ export const playlistRenameApi = {
 export const playlistGetApi = {
   async GET(req: Request) {
     const name = (req as any).params.name as string;
-    const playlistPath = join(PLAYLISTS_DIR, `${sanitizeFilename(name)}.csv`);
-    if (!existsSync(playlistPath)) {
+    const playlistPath = findPlaylistFile(name);
+    if (!playlistPath) {
       return HttpResponse.error("Playlist not found", 404);
     }
     const content = readFileSync(playlistPath, "utf-8");

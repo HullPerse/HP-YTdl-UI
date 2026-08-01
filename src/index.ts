@@ -22,6 +22,14 @@ import {
   playlistReorderApi,
 } from "@/api/server/routes/playlists";
 import {
+  playlistRenameWholeApi,
+  playlistCleanupApi,
+  playlistConvertCsvApi,
+  playlistCompressApi,
+  playlistNormalizeApi,
+  playlistResyncApi,
+} from "@/api/server/routes/edit";
+import {
   queueAddApi,
   queueReorderApi,
   queueClearApi,
@@ -62,6 +70,12 @@ const server = serve({
     "/api/playlists/:name/add": playlistAddApi,
     "/api/playlists/:name/delete": playlistDeleteApi,
     "/api/playlists/:name/reorder": playlistReorderApi,
+    "/api/playlists/:name/rename": playlistRenameWholeApi,
+    "/api/playlists/:name/cleanup": playlistCleanupApi,
+    "/api/playlists/:name/convert-csv": playlistConvertCsvApi,
+    "/api/playlists/:name/compress": playlistCompressApi,
+    "/api/playlists/:name/normalize": playlistNormalizeApi,
+    "/api/playlists/:name/resync": playlistResyncApi,
     "/api/rename/playlist/:name": playlistRenameApi,
 
     "/api/queue/add": queueAddApi,

@@ -2,10 +2,14 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/button";
 import { Input } from "@/components/input";
+import { Pencil } from "lucide-react";
+import Modal from "@/components/modal";
+import PlaylistEditor from "./edit";
 import type { PlaylistInfo } from "@/types";
 
 function PlaylistSettings() {
   const [selected, setSelected] = useState("");
+  const [editing, setEditing] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameResult, setRenameResult] = useState("");
   const [importUrl, setImportUrl] = useState("");
@@ -109,32 +113,40 @@ function PlaylistSettings() {
                 name: importName.trim(),
               });
             }}
-            disabled={
-              importing || !importUrl.trim() || !importName.trim()
-            }
+            disabled={importing || !importUrl.trim() || !importName.trim()}
           >
             {importing ? "Importing..." : "Import"}
           </Button>
-          {importResult && (
-            <p className="text-xs text-muted">{importResult}</p>
-          )}
+          {importResult && <p className="text-xs text-muted">{importResult}</p>}
         </div>
       </Section>
 
       <Section title="Rename Downloaded Files">
         <div className="flex flex-col gap-2">
-          <select
-            value={selected}
-            onChange={(e) => setSelected(e.target.value)}
-            className="bg-accent text-text p-2 border border-border"
-          >
-            <option value="">Select a playlist...</option>
-            {playlists.map((p) => (
-              <option key={p.name} value={p.name}>
-                {p.name} ({p.count} tracks)
-              </option>
-            ))}
-          </select>
+          <div className="flex flex-row gap-2">
+            <select
+              value={selected}
+              onChange={(e) => setSelected(e.target.value)}
+              className="flex-1 bg-accent text-text p-2 border border-border"
+            >
+              <option value="">Select a playlist...</option>
+              {playlists.map((p) => (
+                <option key={p.name} value={p.name}>
+                  {p.name} ({p.count} tracks)
+                </option>
+              ))}
+            </select>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setEditing(true)}
+              disabled={!selected}
+              title="Edit selected playlist"
+            >
+              <Pencil className="size-4" />
+              Edit
+            </Button>
+          </div>
           <Button
             variant="accent"
             size="sm"
@@ -150,6 +162,16 @@ function PlaylistSettings() {
           )}
         </div>
       </Section>
+
+      {editing && selected && (
+        <Modal header={`Edit: ${selected}`} onClose={() => setEditing(false)}>
+          <PlaylistEditor
+            key={selected}
+            selectedPlaylist={selected}
+            onClose={() => setEditing(false)}
+          />
+        </Modal>
+      )}
     </div>
   );
 }

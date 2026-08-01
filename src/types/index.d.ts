@@ -83,6 +83,54 @@ export interface CookiesBody {
   content: string;
 }
 
+export interface PlaylistCleanupOptions {
+  removeHeaders?: boolean;
+  removeIndexes?: boolean;
+  removeUrls?: boolean;
+  removeTimestamps?: boolean;
+  normalizeTitles?: boolean;
+  dedupe?: boolean;
+}
+
+export interface PlaylistCleanupBody {
+  options?: PlaylistCleanupOptions;
+  dry_run?: boolean;
+}
+
+export interface PlaylistRenameBody {
+  new_name: string;
+}
+
+export interface PlaylistCompressBody {
+  indices?: number[];
+  bitrate?: string;
+}
+
+export interface PlaylistNormalizeBody {
+  indices?: number[];
+}
+
+export interface PlaylistResyncBody {
+  url: string;
+}
+
+export interface AudioProcessResult {
+  index?: number;
+  file?: string;
+  ok: boolean;
+  error?: string;
+}
+
+export interface PlaylistCleanupResult {
+  before: number;
+  after: number;
+  removed: number;
+  changed: number;
+  removedLines: string[];
+  preview: string[];
+  extension?: string;
+}
+
 export interface QueueItemData {
   id: string;
   url: string;
